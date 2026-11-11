@@ -1,0 +1,854 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data: blob:; font-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'"><meta name="viewport" content="width=device-width,initial-scale=1"><title>REST API 서버 구축</title><link rel="stylesheet" href="../assets/book-d4f8cb83afec858a.css"></head><body><div class="reader" data-toc="open"><header class="book-bar"><button type="button" class="toc-toggle" aria-expanded="true" aria-controls="toc">목차</button><span class="book-bar__title">REST API 서버 구축</span></header><aside class="toc" id="toc"><p class="caption">목차 / CONTENTS</p><div class="toc-title">REST API 서버 구축</div><a href="../index.html" data-chapter="0" title="표지" aria-current="false">표지</a><a href="01.html" data-chapter="1" title="1장. REST API 프로젝트 준비" aria-current="false">1장. REST API 프로젝트 준비</a><a href="02.html" data-chapter="2" title="2장. 엔티티와 더미 데이터" aria-current="false">2장. 엔티티와 더미 데이터</a><a href="03.html" data-chapter="3" title="3장. JWT란?" aria-current="false">3장. JWT란?</a><a href="04.html" data-chapter="4" title="4장. 공통 응답이란?" aria-current="false">4장. 공통 응답이란?</a><a href="05.html" data-chapter="5" title="5장. 스프링 시큐리티란?" aria-current="false">5장. 스프링 시큐리티란?</a><a href="06.html" data-chapter="6" title="6장. SecurityFilterChain 설정" aria-current="false">6장. SecurityFilterChain 설정</a><a href="07.html" data-chapter="7" title="7장. 회원 API 만들기" aria-current="false">7장. 회원 API 만들기</a><a href="08.html" data-chapter="8" title="8장. JWT 인증 전체 흐름 확인" aria-current="false">8장. JWT 인증 전체 흐름 확인</a><a href="09.html" data-chapter="9" title="9장. 회원 정보 API 만들기" aria-current="false">9장. 회원 정보 API 만들기</a><a href="10.html" data-chapter="10" title="10장. 게시글 조회와 쓰기" aria-current="false">10장. 게시글 조회와 쓰기</a><a href="11.html" data-chapter="11" title="11장. 게시글 수정과 삭제" aria-current="true">11장. 게시글 수정과 삭제</a><a href="12.html" data-chapter="12" title="12장. 댓글 API" aria-current="false">12장. 댓글 API</a><a href="13.html" data-chapter="13" title="13장. 관리자 API" aria-current="false">13장. 관리자 API</a><footer>13장</footer></aside><main class="reading"><section class="chapter" id="chapter-11"><div class="eyebrow">REST API 서버 구축 / CHAPTER 11</div><span class="chapter-num" aria-hidden="true">11</span><h2>11장. 게시글 수정과 삭제</h2><p>이 장에서는 게시글 API 세 개를 더 만듭니다. 수정 화면에 채울 기존 내용 조회, 게시글 수정, 게시글 삭제입니다. 세 API 모두 작성자만 쓸 수 있습니다.</p>
+<table><thead><tr><th>기능</th><th>메서드와 주소</th><th>누가 쓸 수 있는가</th></tr></thead><tbody><tr><td>수정 정보</td><td><code>GET /api/boards/{boardId}/edit</code></td><td>작성자</td></tr><tr><td>수정</td><td><code>PUT /api/boards/{boardId}</code></td><td>작성자</td></tr><tr><td>삭제</td><td><code>DELETE /api/boards/{boardId}</code></td><td>작성자</td></tr></tbody></table>
+<p>9장에서 나눈 두 단계 인가를 그대로 적용합니다. 로그인했는지는 URL 규칙이 확인하고, 작성자인지는 서비스 코드가 확인합니다.</p>
+<h3>1. 작성자 확인 패턴</h3>
+<p>&quot;이 글의 작성자인가&quot;는 게시글을 DB에서 꺼내 봐야 알 수 있습니다. URL 규칙은 주소와 역할만 보므로 이 판단은 서비스 메서드가 맡습니다. 수정 정보, 수정, 삭제 메서드는 모두 같은 세 단계로 작성합니다.</p>
+<table><thead><tr><th>순서</th><th>하는 일</th><th>실패하면</th></tr></thead><tbody><tr><td>1</td><td><code>findById()</code>로 게시글 조회</td><td><code>NotFoundException</code> → 404</td></tr><tr><td>2</td><td>게시글 작성자 id와 토큰의 id 비교</td><td><code>ForbiddenException</code> → 403</td></tr><tr><td>3</td><td>실제 작업(조회 · 수정 · 삭제)</td><td>-</td></tr></tbody></table>
+<p><strong>기본 문법</strong></p>
+<div class="code-wrap" data-kind="code" data-lang="java"><div class="code-label"><span class="code-label__name">Java</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1
+2
+3
+4
+5
+6
+7
+8</div><pre><code class="language-java" data-code="Board board = boardRepository.findById(boardId)
+        .orElseThrow(() -&gt; new NotFoundException(&quot;게시글을 찾을 수 없습니다&quot;));
+
+if (!board.getUser().getId().equals(sessionUserId)) {
+    throw new ForbiddenException(&quot;권한이 없을 때 보낼 메시지&quot;);
+}
+
+// 실제 작업"><span class="token class-name">Board</span> board <span class="token operator">=</span> boardRepository<span class="token punctuation">.</span><span class="token function">findById</span><span class="token punctuation">(</span>boardId<span class="token punctuation">)</span>
+        <span class="token punctuation">.</span><span class="token function">orElseThrow</span><span class="token punctuation">(</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token operator">-></span> <span class="token keyword">new</span> <span class="token class-name">NotFoundException</span><span class="token punctuation">(</span><span class="token string">"게시글을 찾을 수 없습니다"</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+<span class="token keyword">if</span> <span class="token punctuation">(</span><span class="token operator">!</span>board<span class="token punctuation">.</span><span class="token function">getUser</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">getId</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">equals</span><span class="token punctuation">(</span>sessionUserId<span class="token punctuation">)</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+    <span class="token keyword">throw</span> <span class="token keyword">new</span> <span class="token class-name">ForbiddenException</span><span class="token punctuation">(</span><span class="token string">"권한이 없을 때 보낼 메시지"</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+<span class="token punctuation">}</span>
+
+<span class="token comment">// 실제 작업</span></code></pre></div></div>
+<p>있는 글인지를 먼저 확인하고, 작성자인지는 그다음에 확인합니다. 게시글이 없으면 비교할 작성자도 없기 때문입니다. 그래서 없는 글에 요청하면 누가 요청하든 404를 받습니다.</p>
+<p>비교할 때는 10장에서처럼 값이 반드시 있는 쪽인 DB의 작성자 id에서 <code>equals()</code>를 호출합니다. 2절의 URL 규칙 덕분에 이 메서드들에 오는 <code>sessionUserId</code>는 null이 아닙니다. 그래도 DB 값 쪽에서 <code>equals()</code>를 부르는 습관을 지키면 규칙이 바뀌어도 <code>NullPointerException</code>이 나지 않습니다.</p>
+<p>두 예외는 4장에서 만든 사용자 정의 예외입니다. 서비스는 던지기만 하고, <code>GlobalExceptionHandler</code>가 상태 코드와 메시지를 담은 공통 응답으로 바꿉니다.</p>
+<figure class="book-figure" data-type="generated" id="figure-30ffaf7b605f"><div class="figure-scroll"><img src="../assets/img/3d503e185a3d42e7.png" alt="작성자 확인의 세 관문" data-raster="true"/></div><figcaption>작성자 확인의 세 관문</figcaption></figure>
+<h3>2. 수정 정보 URL 규칙 추가</h3>
+<h4>2.1 permitAll 규칙에 먼저 걸리는 문제</h4>
+<p><code>PUT</code>과 <code>DELETE</code> 요청에는 규칙을 새로 쓸 필요가 없습니다. 6장의 <code>GET /api/boards/**</code> 규칙은 GET 요청에만 적용됩니다. 그래서 <code>PUT /api/boards/1</code>과 <code>DELETE /api/boards/1</code>은 아래쪽 <code>/api/**</code> 규칙에 걸려 로그인이 필요합니다.</p>
+<p>문제는 <code>GET /api/boards/{boardId}/edit</code>입니다. 이 주소는 수정 화면에 기존 제목과 내용을 채우려고 부르는 조회이므로 작성자만 볼 수 있어야 합니다. 그런데 GET 요청이고 <code>/api/boards/</code>로 시작하므로 <code>GET /api/boards/**</code>의 <code>permitAll()</code>에 먼저 걸립니다. URL 규칙은 위에서부터 처음 맞는 하나만 적용됩니다.</p>
+<table><thead><tr><th>규칙 상태</th><th>토큰 없이 <code>GET /api/boards/1/edit</code></th></tr></thead><tbody><tr><td>edit 규칙 없음</td><td><code>permitAll()</code>로 통과 → <code>sessionUser</code>가 null → 컨트롤러의 <code>sessionUser.getId()</code>에서 <code>NullPointerException</code> → 500, &quot;관리자에게 문의하세요&quot;</td></tr><tr><td>edit 규칙을 <code>permitAll()</code> 위에 추가</td><td>필터 단계에서 막힘 → 401, &quot;로그인 후 이용해주세요&quot;</td></tr></tbody></table>
+<p>로그인하지 않은 사용자의 요청인데 응답이 401이 아니라 500이면 클라이언트는 서버 고장으로 오해합니다. 그래서 edit 주소의 규칙을 <code>GET /api/boards/**</code>보다 위에 한 줄 추가합니다.</p>
+<p><strong>예제 11-1 — 수정 정보 URL 규칙 추가하기</strong></p>
+<p><strong>이어서:</strong> 예제 7-4</p>
+<p><strong>파일명:</strong> <code>src/main/java/com/newtenco/blog/core/SecurityConfig.java</code></p>
+<div class="code-wrap" data-kind="code" data-lang="java"><div class="code-label"><span class="code-label__name">Java</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45
+46
+47
+48
+49
+50
+51
+52
+53
+54
+55
+56
+57
+58
+59
+60
+61
+62
+63
+64
+65
+66
+67
+68
+69
+70
+71
+72
+73
+74
+75
+76
+77
+78
+79
+80
+81
+82
+83
+84
+85
+86
+87
+88
+89
+90
+91
+92</div><pre><code class="language-java" data-code="package com.newtenco.blog.core;
+
+import com.newtenco.blog.core.filter.JwtAuthorizationFilter;
+import com.newtenco.blog.core.util.JwtProvider;
+import com.newtenco.blog.core.util.RespFilter;
+import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import java.util.List;
+
+@RequiredArgsConstructor
+@Configuration
+public class SecurityConfig {
+
+    private final JwtProvider jwtProvider;
+
+    @Value(&quot;${app.cors.allowed-origins}&quot;)
+    private String allowedOrigins;
+
+    // 비밀번호 암호화 도구 (회원가입: encode / 로그인: matches)
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+
+    // CORS: 다른 출처(예: React localhost:5173)에서 오는 요청을 허용한다
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration config = new CorsConfiguration();
+        config.setAllowedOriginPatterns(List.of(allowedOrigins.split(&quot;,&quot;)));
+        config.setAllowedMethods(List.of(&quot;GET&quot;, &quot;POST&quot;, &quot;PUT&quot;, &quot;DELETE&quot;, &quot;OPTIONS&quot;));
+        config.addAllowedHeader(&quot;*&quot;);
+        // JWT 는 쿠키가 아니라 Authorization 헤더로 보내므로 쿠키 동봉은 필요 없다
+        config.setAllowCredentials(false);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration(&quot;/**&quot;, config);
+        return source;
+    }
+
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+
+        // 1. H2 콘솔은 iframe 으로 동작하므로 같은 출처의 iframe 은 허용
+        http.headers(headers -&gt; headers.frameOptions(frame -&gt; frame.sameOrigin()));
+
+        // 2. CORS 적용
+        http.cors(cors -&gt; cors.configurationSource(corsConfigurationSource()));
+
+        // 3. 우리가 쓰지 않는 기본 기능 끄기
+        http.csrf(csrf -&gt; csrf.disable());           // 쿠키를 쓰지 않으므로 CSRF 위험 없음
+        http.formLogin(form -&gt; form.disable());      // 스프링 기본 로그인 화면 끄기
+        http.httpBasic(basic -&gt; basic.disable());    // 브라우저 팝업 로그인 끄기
+
+        // 4. 세션을 만들지 않는다 (JWT = Stateless)
+        http.sessionManagement(session -&gt; session.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
+
+        // 5. 우리가 만든 JWT 필터를 UsernamePasswordAuthenticationFilter 앞에 끼워 넣는다
+        http.addFilterBefore(new JwtAuthorizationFilter(jwtProvider), UsernamePasswordAuthenticationFilter.class);
+
+        // 6. 인증(401) / 권한(403) 실패 시 JSON 으로 응답
+        http.exceptionHandling(ex -&gt; ex
+                .authenticationEntryPoint((req, res, e) -&gt; RespFilter.fail(res, 401, &quot;로그인 후 이용해주세요&quot;))
+                .accessDeniedHandler((req, res, e) -&gt; RespFilter.fail(res, 403, &quot;권한이 없습니다&quot;)));
+
+        // 7. URL 별 접근 규칙 (위에서부터 먼저 맞는 규칙이 적용된다)
+        http.authorizeHttpRequests(auth -&gt; auth
+                .requestMatchers(HttpMethod.OPTIONS, &quot;/**&quot;).permitAll()                // CORS 사전 요청
+                .requestMatchers(&quot;/join&quot;, &quot;/login&quot;, &quot;/check-username&quot;).permitAll()     // 회원가입, 로그인, 중복체크
+                .requestMatchers(&quot;/h2-console/**&quot;).permitAll()                         // H2 콘솔
+                .requestMatchers(&quot;/api/admin/**&quot;).hasRole(&quot;ADMIN&quot;)                     // 관리자 전용
+                .requestMatchers(HttpMethod.GET, &quot;/api/boards/*/edit&quot;).hasAnyRole(&quot;USER&quot;, &quot;ADMIN&quot;) // 수정 정보는 로그인 필요
+                .requestMatchers(HttpMethod.GET, &quot;/api/boards/**&quot;).permitAll()         // 글 목록/상세는 누구나
+                .requestMatchers(&quot;/api/**&quot;).hasAnyRole(&quot;USER&quot;, &quot;ADMIN&quot;)               // 나머지 API 는 로그인 필요
+                .anyRequest().denyAll()                                                // 그 외 주소는 모두 차단
+        );
+
+        return http.build();
+    }
+}"><span class="token keyword">package</span> <span class="token namespace">com<span class="token punctuation">.</span>newtenco<span class="token punctuation">.</span>blog<span class="token punctuation">.</span>core</span><span class="token punctuation">;</span>
+
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">com<span class="token punctuation">.</span>newtenco<span class="token punctuation">.</span>blog<span class="token punctuation">.</span>core<span class="token punctuation">.</span>filter<span class="token punctuation">.</span></span><span class="token class-name">JwtAuthorizationFilter</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">com<span class="token punctuation">.</span>newtenco<span class="token punctuation">.</span>blog<span class="token punctuation">.</span>core<span class="token punctuation">.</span>util<span class="token punctuation">.</span></span><span class="token class-name">JwtProvider</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">com<span class="token punctuation">.</span>newtenco<span class="token punctuation">.</span>blog<span class="token punctuation">.</span>core<span class="token punctuation">.</span>util<span class="token punctuation">.</span></span><span class="token class-name">RespFilter</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">lombok<span class="token punctuation">.</span></span><span class="token class-name">RequiredArgsConstructor</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">org<span class="token punctuation">.</span>springframework<span class="token punctuation">.</span>beans<span class="token punctuation">.</span>factory<span class="token punctuation">.</span>annotation<span class="token punctuation">.</span></span><span class="token class-name">Value</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">org<span class="token punctuation">.</span>springframework<span class="token punctuation">.</span>context<span class="token punctuation">.</span>annotation<span class="token punctuation">.</span></span><span class="token class-name">Bean</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">org<span class="token punctuation">.</span>springframework<span class="token punctuation">.</span>context<span class="token punctuation">.</span>annotation<span class="token punctuation">.</span></span><span class="token class-name">Configuration</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">org<span class="token punctuation">.</span>springframework<span class="token punctuation">.</span>http<span class="token punctuation">.</span></span><span class="token class-name">HttpMethod</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">org<span class="token punctuation">.</span>springframework<span class="token punctuation">.</span>security<span class="token punctuation">.</span>config<span class="token punctuation">.</span>annotation<span class="token punctuation">.</span>web<span class="token punctuation">.</span>builders<span class="token punctuation">.</span></span><span class="token class-name">HttpSecurity</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">org<span class="token punctuation">.</span>springframework<span class="token punctuation">.</span>security<span class="token punctuation">.</span>config<span class="token punctuation">.</span>http<span class="token punctuation">.</span></span><span class="token class-name">SessionCreationPolicy</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">org<span class="token punctuation">.</span>springframework<span class="token punctuation">.</span>security<span class="token punctuation">.</span>crypto<span class="token punctuation">.</span>bcrypt<span class="token punctuation">.</span></span><span class="token class-name">BCryptPasswordEncoder</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">org<span class="token punctuation">.</span>springframework<span class="token punctuation">.</span>security<span class="token punctuation">.</span>crypto<span class="token punctuation">.</span>password<span class="token punctuation">.</span></span><span class="token class-name">PasswordEncoder</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">org<span class="token punctuation">.</span>springframework<span class="token punctuation">.</span>security<span class="token punctuation">.</span>web<span class="token punctuation">.</span></span><span class="token class-name">SecurityFilterChain</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">org<span class="token punctuation">.</span>springframework<span class="token punctuation">.</span>security<span class="token punctuation">.</span>web<span class="token punctuation">.</span>authentication<span class="token punctuation">.</span></span><span class="token class-name">UsernamePasswordAuthenticationFilter</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">org<span class="token punctuation">.</span>springframework<span class="token punctuation">.</span>web<span class="token punctuation">.</span>cors<span class="token punctuation">.</span></span><span class="token class-name">CorsConfiguration</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">org<span class="token punctuation">.</span>springframework<span class="token punctuation">.</span>web<span class="token punctuation">.</span>cors<span class="token punctuation">.</span></span><span class="token class-name">CorsConfigurationSource</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">org<span class="token punctuation">.</span>springframework<span class="token punctuation">.</span>web<span class="token punctuation">.</span>cors<span class="token punctuation">.</span></span><span class="token class-name">UrlBasedCorsConfigurationSource</span></span><span class="token punctuation">;</span>
+
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">java<span class="token punctuation">.</span>util<span class="token punctuation">.</span></span><span class="token class-name">List</span></span><span class="token punctuation">;</span>
+
+<span class="token annotation punctuation">@RequiredArgsConstructor</span>
+<span class="token annotation punctuation">@Configuration</span>
+<span class="token keyword">public</span> <span class="token keyword">class</span> <span class="token class-name">SecurityConfig</span> <span class="token punctuation">{</span>
+
+    <span class="token keyword">private</span> <span class="token keyword">final</span> <span class="token class-name">JwtProvider</span> jwtProvider<span class="token punctuation">;</span>
+
+    <span class="token annotation punctuation">@Value</span><span class="token punctuation">(</span><span class="token string">"${app.cors.allowed-origins}"</span><span class="token punctuation">)</span>
+    <span class="token keyword">private</span> <span class="token class-name">String</span> allowedOrigins<span class="token punctuation">;</span>
+
+    <span class="token comment">// 비밀번호 암호화 도구 (회원가입: encode / 로그인: matches)</span>
+    <span class="token annotation punctuation">@Bean</span>
+    <span class="token keyword">public</span> <span class="token class-name">PasswordEncoder</span> <span class="token function">passwordEncoder</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+        <span class="token keyword">return</span> <span class="token keyword">new</span> <span class="token class-name">BCryptPasswordEncoder</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token punctuation">}</span>
+
+    <span class="token comment">// CORS: 다른 출처(예: React localhost:5173)에서 오는 요청을 허용한다</span>
+    <span class="token annotation punctuation">@Bean</span>
+    <span class="token keyword">public</span> <span class="token class-name">CorsConfigurationSource</span> <span class="token function">corsConfigurationSource</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+        <span class="token class-name">CorsConfiguration</span> config <span class="token operator">=</span> <span class="token keyword">new</span> <span class="token class-name">CorsConfiguration</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+        config<span class="token punctuation">.</span><span class="token function">setAllowedOriginPatterns</span><span class="token punctuation">(</span><span class="token class-name">List</span><span class="token punctuation">.</span><span class="token function">of</span><span class="token punctuation">(</span>allowedOrigins<span class="token punctuation">.</span><span class="token function">split</span><span class="token punctuation">(</span><span class="token string">","</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+        config<span class="token punctuation">.</span><span class="token function">setAllowedMethods</span><span class="token punctuation">(</span><span class="token class-name">List</span><span class="token punctuation">.</span><span class="token function">of</span><span class="token punctuation">(</span><span class="token string">"GET"</span><span class="token punctuation">,</span> <span class="token string">"POST"</span><span class="token punctuation">,</span> <span class="token string">"PUT"</span><span class="token punctuation">,</span> <span class="token string">"DELETE"</span><span class="token punctuation">,</span> <span class="token string">"OPTIONS"</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+        config<span class="token punctuation">.</span><span class="token function">addAllowedHeader</span><span class="token punctuation">(</span><span class="token string">"*"</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+        <span class="token comment">// JWT 는 쿠키가 아니라 Authorization 헤더로 보내므로 쿠키 동봉은 필요 없다</span>
+        config<span class="token punctuation">.</span><span class="token function">setAllowCredentials</span><span class="token punctuation">(</span><span class="token boolean">false</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+        <span class="token class-name">UrlBasedCorsConfigurationSource</span> source <span class="token operator">=</span> <span class="token keyword">new</span> <span class="token class-name">UrlBasedCorsConfigurationSource</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+        source<span class="token punctuation">.</span><span class="token function">registerCorsConfiguration</span><span class="token punctuation">(</span><span class="token string">"/**"</span><span class="token punctuation">,</span> config<span class="token punctuation">)</span><span class="token punctuation">;</span>
+        <span class="token keyword">return</span> source<span class="token punctuation">;</span>
+    <span class="token punctuation">}</span>
+
+    <span class="token annotation punctuation">@Bean</span>
+    <span class="token keyword">public</span> <span class="token class-name">SecurityFilterChain</span> <span class="token function">filterChain</span><span class="token punctuation">(</span><span class="token class-name">HttpSecurity</span> http<span class="token punctuation">)</span> <span class="token keyword">throws</span> <span class="token class-name">Exception</span> <span class="token punctuation">{</span>
+
+        <span class="token comment">// 1. H2 콘솔은 iframe 으로 동작하므로 같은 출처의 iframe 은 허용</span>
+        http<span class="token punctuation">.</span><span class="token function">headers</span><span class="token punctuation">(</span>headers <span class="token operator">-></span> headers<span class="token punctuation">.</span><span class="token function">frameOptions</span><span class="token punctuation">(</span>frame <span class="token operator">-></span> frame<span class="token punctuation">.</span><span class="token function">sameOrigin</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+        <span class="token comment">// 2. CORS 적용</span>
+        http<span class="token punctuation">.</span><span class="token function">cors</span><span class="token punctuation">(</span>cors <span class="token operator">-></span> cors<span class="token punctuation">.</span><span class="token function">configurationSource</span><span class="token punctuation">(</span><span class="token function">corsConfigurationSource</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+        <span class="token comment">// 3. 우리가 쓰지 않는 기본 기능 끄기</span>
+        http<span class="token punctuation">.</span><span class="token function">csrf</span><span class="token punctuation">(</span>csrf <span class="token operator">-></span> csrf<span class="token punctuation">.</span><span class="token function">disable</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>           <span class="token comment">// 쿠키를 쓰지 않으므로 CSRF 위험 없음</span>
+        http<span class="token punctuation">.</span><span class="token function">formLogin</span><span class="token punctuation">(</span>form <span class="token operator">-></span> form<span class="token punctuation">.</span><span class="token function">disable</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>      <span class="token comment">// 스프링 기본 로그인 화면 끄기</span>
+        http<span class="token punctuation">.</span><span class="token function">httpBasic</span><span class="token punctuation">(</span>basic <span class="token operator">-></span> basic<span class="token punctuation">.</span><span class="token function">disable</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>    <span class="token comment">// 브라우저 팝업 로그인 끄기</span>
+
+        <span class="token comment">// 4. 세션을 만들지 않는다 (JWT = Stateless)</span>
+        http<span class="token punctuation">.</span><span class="token function">sessionManagement</span><span class="token punctuation">(</span>session <span class="token operator">-></span> session<span class="token punctuation">.</span><span class="token function">sessionCreationPolicy</span><span class="token punctuation">(</span><span class="token class-name">SessionCreationPolicy</span><span class="token punctuation">.</span><span class="token constant">STATELESS</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+        <span class="token comment">// 5. 우리가 만든 JWT 필터를 UsernamePasswordAuthenticationFilter 앞에 끼워 넣는다</span>
+        http<span class="token punctuation">.</span><span class="token function">addFilterBefore</span><span class="token punctuation">(</span><span class="token keyword">new</span> <span class="token class-name">JwtAuthorizationFilter</span><span class="token punctuation">(</span>jwtProvider<span class="token punctuation">)</span><span class="token punctuation">,</span> <span class="token class-name">UsernamePasswordAuthenticationFilter</span><span class="token punctuation">.</span><span class="token keyword">class</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+        <span class="token comment">// 6. 인증(401) / 권한(403) 실패 시 JSON 으로 응답</span>
+        http<span class="token punctuation">.</span><span class="token function">exceptionHandling</span><span class="token punctuation">(</span>ex <span class="token operator">-></span> ex
+                <span class="token punctuation">.</span><span class="token function">authenticationEntryPoint</span><span class="token punctuation">(</span><span class="token punctuation">(</span>req<span class="token punctuation">,</span> res<span class="token punctuation">,</span> e<span class="token punctuation">)</span> <span class="token operator">-></span> <span class="token class-name">RespFilter</span><span class="token punctuation">.</span><span class="token function">fail</span><span class="token punctuation">(</span>res<span class="token punctuation">,</span> <span class="token number">401</span><span class="token punctuation">,</span> <span class="token string">"로그인 후 이용해주세요"</span><span class="token punctuation">)</span><span class="token punctuation">)</span>
+                <span class="token punctuation">.</span><span class="token function">accessDeniedHandler</span><span class="token punctuation">(</span><span class="token punctuation">(</span>req<span class="token punctuation">,</span> res<span class="token punctuation">,</span> e<span class="token punctuation">)</span> <span class="token operator">-></span> <span class="token class-name">RespFilter</span><span class="token punctuation">.</span><span class="token function">fail</span><span class="token punctuation">(</span>res<span class="token punctuation">,</span> <span class="token number">403</span><span class="token punctuation">,</span> <span class="token string">"권한이 없습니다"</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+        <span class="token comment">// 7. URL 별 접근 규칙 (위에서부터 먼저 맞는 규칙이 적용된다)</span>
+        http<span class="token punctuation">.</span><span class="token function">authorizeHttpRequests</span><span class="token punctuation">(</span>auth <span class="token operator">-></span> auth
+                <span class="token punctuation">.</span><span class="token function">requestMatchers</span><span class="token punctuation">(</span><span class="token class-name">HttpMethod</span><span class="token punctuation">.</span><span class="token constant">OPTIONS</span><span class="token punctuation">,</span> <span class="token string">"/**"</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">permitAll</span><span class="token punctuation">(</span><span class="token punctuation">)</span>                <span class="token comment">// CORS 사전 요청</span>
+                <span class="token punctuation">.</span><span class="token function">requestMatchers</span><span class="token punctuation">(</span><span class="token string">"/join"</span><span class="token punctuation">,</span> <span class="token string">"/login"</span><span class="token punctuation">,</span> <span class="token string">"/check-username"</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">permitAll</span><span class="token punctuation">(</span><span class="token punctuation">)</span>     <span class="token comment">// 회원가입, 로그인, 중복체크</span>
+                <span class="token punctuation">.</span><span class="token function">requestMatchers</span><span class="token punctuation">(</span><span class="token string">"/h2-console/**"</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">permitAll</span><span class="token punctuation">(</span><span class="token punctuation">)</span>                         <span class="token comment">// H2 콘솔</span>
+                <span class="token punctuation">.</span><span class="token function">requestMatchers</span><span class="token punctuation">(</span><span class="token string">"/api/admin/**"</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">hasRole</span><span class="token punctuation">(</span><span class="token string">"ADMIN"</span><span class="token punctuation">)</span>                     <span class="token comment">// 관리자 전용</span>
+                <span class="token punctuation">.</span><span class="token function">requestMatchers</span><span class="token punctuation">(</span><span class="token class-name">HttpMethod</span><span class="token punctuation">.</span><span class="token constant">GET</span><span class="token punctuation">,</span> <span class="token string">"/api/boards/*/edit"</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">hasAnyRole</span><span class="token punctuation">(</span><span class="token string">"USER"</span><span class="token punctuation">,</span> <span class="token string">"ADMIN"</span><span class="token punctuation">)</span> <span class="token comment">// 수정 정보는 로그인 필요</span>
+                <span class="token punctuation">.</span><span class="token function">requestMatchers</span><span class="token punctuation">(</span><span class="token class-name">HttpMethod</span><span class="token punctuation">.</span><span class="token constant">GET</span><span class="token punctuation">,</span> <span class="token string">"/api/boards/**"</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">permitAll</span><span class="token punctuation">(</span><span class="token punctuation">)</span>         <span class="token comment">// 글 목록/상세는 누구나</span>
+                <span class="token punctuation">.</span><span class="token function">requestMatchers</span><span class="token punctuation">(</span><span class="token string">"/api/**"</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">hasAnyRole</span><span class="token punctuation">(</span><span class="token string">"USER"</span><span class="token punctuation">,</span> <span class="token string">"ADMIN"</span><span class="token punctuation">)</span>               <span class="token comment">// 나머지 API 는 로그인 필요</span>
+                <span class="token punctuation">.</span><span class="token function">anyRequest</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">denyAll</span><span class="token punctuation">(</span><span class="token punctuation">)</span>                                                <span class="token comment">// 그 외 주소는 모두 차단</span>
+        <span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+        <span class="token keyword">return</span> http<span class="token punctuation">.</span><span class="token function">build</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token punctuation">}</span>
+<span class="token punctuation">}</span></code></pre></div></div>
+<p><strong>실행 결과</strong></p>
+<p>서버를 다시 실행하면 오류 없이 시작됩니다. edit 주소를 처리할 컨트롤러는 3절에서 만들므로, 규칙의 효과는 4절에서 확인합니다.</p>
+<p>바뀐 곳은 7번 규칙의 <code>/api/boards/*/edit</code> 한 줄입니다. 이 규칙은 로그인 여부만 확인합니다. ADMIN 역할이 있는 cos도 이 규칙은 통과하지만, 남의 글이면 서비스의 작성자 확인에서 403을 받습니다.</p>
+<h4>2.2 *와 ** 패턴</h4>
+<p>두 규칙은 와일드카드가 <code>*</code>와 <code>**</code>로 다르고, 그래서 맞는 주소의 범위도 크게 다릅니다. <code>*</code>는 경로 한 칸(슬래시 사이 한 구간)에 맞고, <code>**</code>는 남은 경로 0칸 이상에 맞습니다.</p>
+<table><thead><tr><th>패턴</th><th>맞는 주소</th><th>맞지 않는 주소</th></tr></thead><tbody><tr><td><code>/api/boards/*/edit</code></td><td><code>/api/boards/1/edit</code>, <code>/api/boards/abc/edit</code></td><td><code>/api/boards/1/2/edit</code>, <code>/api/boards/edit</code></td></tr><tr><td><code>/api/boards/**</code></td><td><code>/api/boards</code>, <code>/api/boards/1</code>, <code>/api/boards/1/edit</code></td><td><code>/api/replies</code></td></tr></tbody></table>
+<p><code>/api/boards/**</code>는 edit 주소까지 포함하는 넓은 규칙입니다. 그래서 좁은 규칙인 <code>/api/boards/*/edit</code>를 위에 둬야 합니다. 규칙은 좁은 것에서 넓은 것 순서로 적는다고 기억하면 됩니다.</p>
+<p><code>*</code>는 그 칸의 글자가 숫자인지 따지지 않습니다. <code>/api/boards/abc/edit</code>도 이 규칙에 맞으므로 토큰이 있으면 통과합니다. 그 뒤 컨트롤러가 <code>abc</code>를 <code>Integer</code>로 바꾸지 못해 9장에서 만든 경로 변수 타입 불일치 처리기가 400으로 응답합니다.</p>
+<p>스프링 시큐리티 7의 <code>requestMatchers()</code>는 스프링의 경로 패턴 문법을 따릅니다. 이 문법에서는 <code>**</code>를 패턴 끝에만 쓸 수 있습니다. <code>/api/**/edit</code>처럼 <code>**</code>를 중간에 넣으면 패턴을 해석하지 못해 서버가 시작되지 않습니다[확인 필요: Spring Framework 7의 PathPattern에서 <code>**</code> 위치 규칙이 바뀌었는지 확인].</p>
+<h3>3. 수정·삭제 서비스와 컨트롤러</h3>
+<h4>3.1 수정 정보·수정·삭제 메서드</h4>
+<p>수정 요청 본문을 받을 <code>UpdateDTO</code>를 <code>BoardRequest</code>에 추가합니다. 서비스에는 1절의 패턴으로 메서드 세 개를 추가하고, 컨트롤러에는 각 메서드를 부를 주소 세 개를 추가합니다.</p>
+<p><strong>예제 11-2 — 게시글 수정·삭제 API 만들기</strong></p>
+<p><strong>이어서:</strong> 예제 11-1</p>
+<p><strong>파일명:</strong> <code>src/main/java/com/newtenco/blog/board/BoardRequest.java</code></p>
+<div class="code-wrap" data-kind="code" data-lang="java"><div class="code-label"><span class="code-label__name">Java</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38</div><pre><code class="language-java" data-code="package com.newtenco.blog.board;
+
+import com.newtenco.blog.user.User;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+
+public class BoardRequest {
+
+    // 게시글 쓰기: {&quot;title&quot;:&quot;제목&quot;,&quot;content&quot;:&quot;내용&quot;}
+    public record SaveDTO(
+            @NotBlank(message = &quot;제목을 입력해주세요&quot;)
+            @Size(max = 100, message = &quot;제목은 100자 이하로 입력해주세요&quot;)
+            String title,
+
+            @NotBlank(message = &quot;내용을 입력해주세요&quot;)
+            @Size(max = 1000, message = &quot;내용은 1000자 이하로 입력해주세요&quot;)
+            String content) {
+
+        public Board toEntity(User user) {
+            return Board.builder()
+                    .title(title)
+                    .content(content)
+                    .user(user)
+                    .build();
+        }
+    }
+
+    // 게시글 수정: {&quot;title&quot;:&quot;수정 제목&quot;,&quot;content&quot;:&quot;수정 내용&quot;}
+    public record UpdateDTO(
+            @NotBlank(message = &quot;제목을 입력해주세요&quot;)
+            @Size(max = 100, message = &quot;제목은 100자 이하로 입력해주세요&quot;)
+            String title,
+
+            @NotBlank(message = &quot;내용을 입력해주세요&quot;)
+            @Size(max = 1000, message = &quot;내용은 1000자 이하로 입력해주세요&quot;)
+            String content) {
+    }
+}"><span class="token keyword">package</span> <span class="token namespace">com<span class="token punctuation">.</span>newtenco<span class="token punctuation">.</span>blog<span class="token punctuation">.</span>board</span><span class="token punctuation">;</span>
+
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">com<span class="token punctuation">.</span>newtenco<span class="token punctuation">.</span>blog<span class="token punctuation">.</span>user<span class="token punctuation">.</span></span><span class="token class-name">User</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">jakarta<span class="token punctuation">.</span>validation<span class="token punctuation">.</span>constraints<span class="token punctuation">.</span></span><span class="token class-name">NotBlank</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">jakarta<span class="token punctuation">.</span>validation<span class="token punctuation">.</span>constraints<span class="token punctuation">.</span></span><span class="token class-name">Size</span></span><span class="token punctuation">;</span>
+
+<span class="token keyword">public</span> <span class="token keyword">class</span> <span class="token class-name">BoardRequest</span> <span class="token punctuation">{</span>
+
+    <span class="token comment">// 게시글 쓰기: {"title":"제목","content":"내용"}</span>
+    <span class="token keyword">public</span> <span class="token keyword">record</span> <span class="token class-name">SaveDTO</span><span class="token punctuation">(</span>
+            <span class="token annotation punctuation">@NotBlank</span><span class="token punctuation">(</span>message <span class="token operator">=</span> <span class="token string">"제목을 입력해주세요"</span><span class="token punctuation">)</span>
+            <span class="token annotation punctuation">@Size</span><span class="token punctuation">(</span>max <span class="token operator">=</span> <span class="token number">100</span><span class="token punctuation">,</span> message <span class="token operator">=</span> <span class="token string">"제목은 100자 이하로 입력해주세요"</span><span class="token punctuation">)</span>
+            <span class="token class-name">String</span> title<span class="token punctuation">,</span>
+
+            <span class="token annotation punctuation">@NotBlank</span><span class="token punctuation">(</span>message <span class="token operator">=</span> <span class="token string">"내용을 입력해주세요"</span><span class="token punctuation">)</span>
+            <span class="token annotation punctuation">@Size</span><span class="token punctuation">(</span>max <span class="token operator">=</span> <span class="token number">1000</span><span class="token punctuation">,</span> message <span class="token operator">=</span> <span class="token string">"내용은 1000자 이하로 입력해주세요"</span><span class="token punctuation">)</span>
+            <span class="token class-name">String</span> content<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+
+        <span class="token keyword">public</span> <span class="token class-name">Board</span> <span class="token function">toEntity</span><span class="token punctuation">(</span><span class="token class-name">User</span> user<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+            <span class="token keyword">return</span> <span class="token class-name">Board</span><span class="token punctuation">.</span><span class="token function">builder</span><span class="token punctuation">(</span><span class="token punctuation">)</span>
+                    <span class="token punctuation">.</span><span class="token function">title</span><span class="token punctuation">(</span>title<span class="token punctuation">)</span>
+                    <span class="token punctuation">.</span><span class="token function">content</span><span class="token punctuation">(</span>content<span class="token punctuation">)</span>
+                    <span class="token punctuation">.</span><span class="token function">user</span><span class="token punctuation">(</span>user<span class="token punctuation">)</span>
+                    <span class="token punctuation">.</span><span class="token function">build</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+        <span class="token punctuation">}</span>
+    <span class="token punctuation">}</span>
+
+    <span class="token comment">// 게시글 수정: {"title":"수정 제목","content":"수정 내용"}</span>
+    <span class="token keyword">public</span> <span class="token keyword">record</span> <span class="token class-name">UpdateDTO</span><span class="token punctuation">(</span>
+            <span class="token annotation punctuation">@NotBlank</span><span class="token punctuation">(</span>message <span class="token operator">=</span> <span class="token string">"제목을 입력해주세요"</span><span class="token punctuation">)</span>
+            <span class="token annotation punctuation">@Size</span><span class="token punctuation">(</span>max <span class="token operator">=</span> <span class="token number">100</span><span class="token punctuation">,</span> message <span class="token operator">=</span> <span class="token string">"제목은 100자 이하로 입력해주세요"</span><span class="token punctuation">)</span>
+            <span class="token class-name">String</span> title<span class="token punctuation">,</span>
+
+            <span class="token annotation punctuation">@NotBlank</span><span class="token punctuation">(</span>message <span class="token operator">=</span> <span class="token string">"내용을 입력해주세요"</span><span class="token punctuation">)</span>
+            <span class="token annotation punctuation">@Size</span><span class="token punctuation">(</span>max <span class="token operator">=</span> <span class="token number">1000</span><span class="token punctuation">,</span> message <span class="token operator">=</span> <span class="token string">"내용은 1000자 이하로 입력해주세요"</span><span class="token punctuation">)</span>
+            <span class="token class-name">String</span> content<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+    <span class="token punctuation">}</span>
+<span class="token punctuation">}</span></code></pre></div></div>
+<p><strong>파일명:</strong> <code>src/main/java/com/newtenco/blog/board/BoardService.java</code></p>
+<div class="code-wrap" data-kind="code" data-lang="java"><div class="code-label"><span class="code-label__name">Java</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45
+46
+47
+48
+49
+50
+51
+52
+53
+54
+55
+56
+57
+58
+59
+60
+61
+62
+63
+64
+65
+66
+67</div><pre><code class="language-java" data-code="package com.newtenco.blog.board;
+
+import com.newtenco.blog.core.handler.errors.ForbiddenException;
+import com.newtenco.blog.core.handler.errors.NotFoundException;
+import com.newtenco.blog.user.User;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+
+@Transactional(readOnly = true)
+@RequiredArgsConstructor
+@Service
+public class BoardService {
+
+    private final BoardRepository boardRepository;
+
+    public List&lt;BoardResponse.DTO&gt; 게시글목록() {
+        return boardRepository.findAllJoinUser().stream()
+                .map(BoardResponse.DTO::new)
+                .toList();
+    }
+
+    @Transactional
+    public BoardResponse.DTO 게시글쓰기(BoardRequest.SaveDTO reqDTO, User sessionUser) {
+        Board savedBoard = boardRepository.save(reqDTO.toEntity(sessionUser));
+        return new BoardResponse.DTO(savedBoard);
+    }
+
+    public BoardResponse.DetailDTO 게시글상세(Integer boardId, Integer sessionUserId) {
+        Board board = boardRepository.findByIdJoinUserAndReplies(boardId)
+                .orElseThrow(() -&gt; new NotFoundException(&quot;게시글을 찾을 수 없습니다&quot;));
+        return new BoardResponse.DetailDTO(board, sessionUserId);
+    }
+
+    // 수정 화면에 채울 기존 내용 (작성자만)
+    public BoardResponse.DTO 게시글수정정보(Integer boardId, Integer sessionUserId) {
+        Board board = boardRepository.findById(boardId)
+                .orElseThrow(() -&gt; new NotFoundException(&quot;게시글을 찾을 수 없습니다&quot;));
+        if (!board.getUser().getId().equals(sessionUserId)) {
+            throw new ForbiddenException(&quot;게시글에 접근할 권한이 없습니다&quot;);
+        }
+        return new BoardResponse.DTO(board);
+    }
+
+    @Transactional
+    public BoardResponse.DTO 게시글수정(Integer boardId, BoardRequest.UpdateDTO reqDTO, Integer sessionUserId) {
+        Board board = boardRepository.findById(boardId)
+                .orElseThrow(() -&gt; new NotFoundException(&quot;게시글을 찾을 수 없습니다&quot;));
+        if (!board.getUser().getId().equals(sessionUserId)) {
+            throw new ForbiddenException(&quot;게시글을 수정할 권한이 없습니다&quot;);
+        }
+        board.update(reqDTO.title(), reqDTO.content()); // 더티 체킹
+        return new BoardResponse.DTO(board);
+    }
+
+    @Transactional
+    public void 게시글삭제(Integer boardId, Integer sessionUserId) {
+        Board board = boardRepository.findById(boardId)
+                .orElseThrow(() -&gt; new NotFoundException(&quot;게시글을 찾을 수 없습니다&quot;));
+        if (!board.getUser().getId().equals(sessionUserId)) {
+            throw new ForbiddenException(&quot;게시글을 삭제할 권한이 없습니다&quot;);
+        }
+        boardRepository.delete(board); // cascade = REMOVE 로 댓글도 함께 삭제
+    }
+}"><span class="token keyword">package</span> <span class="token namespace">com<span class="token punctuation">.</span>newtenco<span class="token punctuation">.</span>blog<span class="token punctuation">.</span>board</span><span class="token punctuation">;</span>
+
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">com<span class="token punctuation">.</span>newtenco<span class="token punctuation">.</span>blog<span class="token punctuation">.</span>core<span class="token punctuation">.</span>handler<span class="token punctuation">.</span>errors<span class="token punctuation">.</span></span><span class="token class-name">ForbiddenException</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">com<span class="token punctuation">.</span>newtenco<span class="token punctuation">.</span>blog<span class="token punctuation">.</span>core<span class="token punctuation">.</span>handler<span class="token punctuation">.</span>errors<span class="token punctuation">.</span></span><span class="token class-name">NotFoundException</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">com<span class="token punctuation">.</span>newtenco<span class="token punctuation">.</span>blog<span class="token punctuation">.</span>user<span class="token punctuation">.</span></span><span class="token class-name">User</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">lombok<span class="token punctuation">.</span></span><span class="token class-name">RequiredArgsConstructor</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">org<span class="token punctuation">.</span>springframework<span class="token punctuation">.</span>stereotype<span class="token punctuation">.</span></span><span class="token class-name">Service</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">org<span class="token punctuation">.</span>springframework<span class="token punctuation">.</span>transaction<span class="token punctuation">.</span>annotation<span class="token punctuation">.</span></span><span class="token class-name">Transactional</span></span><span class="token punctuation">;</span>
+
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">java<span class="token punctuation">.</span>util<span class="token punctuation">.</span></span><span class="token class-name">List</span></span><span class="token punctuation">;</span>
+
+<span class="token annotation punctuation">@Transactional</span><span class="token punctuation">(</span>readOnly <span class="token operator">=</span> <span class="token boolean">true</span><span class="token punctuation">)</span>
+<span class="token annotation punctuation">@RequiredArgsConstructor</span>
+<span class="token annotation punctuation">@Service</span>
+<span class="token keyword">public</span> <span class="token keyword">class</span> <span class="token class-name">BoardService</span> <span class="token punctuation">{</span>
+
+    <span class="token keyword">private</span> <span class="token keyword">final</span> <span class="token class-name">BoardRepository</span> boardRepository<span class="token punctuation">;</span>
+
+    <span class="token keyword">public</span> <span class="token class-name">List</span><span class="token generics"><span class="token punctuation">&lt;</span><span class="token class-name">BoardResponse</span><span class="token punctuation">.</span>DTO<span class="token punctuation">></span></span> 게시글목록<span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+        <span class="token keyword">return</span> boardRepository<span class="token punctuation">.</span><span class="token function">findAllJoinUser</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">stream</span><span class="token punctuation">(</span><span class="token punctuation">)</span>
+                <span class="token punctuation">.</span><span class="token function">map</span><span class="token punctuation">(</span><span class="token class-name">BoardResponse</span><span class="token punctuation">.</span><span class="token constant">DTO</span><span class="token operator">::</span><span class="token keyword">new</span><span class="token punctuation">)</span>
+                <span class="token punctuation">.</span><span class="token function">toList</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token punctuation">}</span>
+
+    <span class="token annotation punctuation">@Transactional</span>
+    <span class="token keyword">public</span> <span class="token class-name">BoardResponse</span><span class="token punctuation">.</span><span class="token constant">DTO</span> 게시글쓰기<span class="token punctuation">(</span><span class="token class-name">BoardRequest<span class="token punctuation">.</span>SaveDTO</span> reqDTO<span class="token punctuation">,</span> <span class="token class-name">User</span> sessionUser<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+        <span class="token class-name">Board</span> savedBoard <span class="token operator">=</span> boardRepository<span class="token punctuation">.</span><span class="token function">save</span><span class="token punctuation">(</span>reqDTO<span class="token punctuation">.</span><span class="token function">toEntity</span><span class="token punctuation">(</span>sessionUser<span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+        <span class="token keyword">return</span> <span class="token keyword">new</span> <span class="token class-name">BoardResponse</span><span class="token punctuation">.</span><span class="token function">DTO</span><span class="token punctuation">(</span>savedBoard<span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token punctuation">}</span>
+
+    <span class="token keyword">public</span> <span class="token class-name">BoardResponse<span class="token punctuation">.</span>DetailDTO</span> 게시글상세<span class="token punctuation">(</span><span class="token class-name">Integer</span> boardId<span class="token punctuation">,</span> <span class="token class-name">Integer</span> sessionUserId<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+        <span class="token class-name">Board</span> board <span class="token operator">=</span> boardRepository<span class="token punctuation">.</span><span class="token function">findByIdJoinUserAndReplies</span><span class="token punctuation">(</span>boardId<span class="token punctuation">)</span>
+                <span class="token punctuation">.</span><span class="token function">orElseThrow</span><span class="token punctuation">(</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token operator">-></span> <span class="token keyword">new</span> <span class="token class-name">NotFoundException</span><span class="token punctuation">(</span><span class="token string">"게시글을 찾을 수 없습니다"</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+        <span class="token keyword">return</span> <span class="token keyword">new</span> <span class="token class-name">BoardResponse<span class="token punctuation">.</span>DetailDTO</span><span class="token punctuation">(</span>board<span class="token punctuation">,</span> sessionUserId<span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token punctuation">}</span>
+
+    <span class="token comment">// 수정 화면에 채울 기존 내용 (작성자만)</span>
+    <span class="token keyword">public</span> <span class="token class-name">BoardResponse</span><span class="token punctuation">.</span><span class="token constant">DTO</span> 게시글수정정보<span class="token punctuation">(</span><span class="token class-name">Integer</span> boardId<span class="token punctuation">,</span> <span class="token class-name">Integer</span> sessionUserId<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+        <span class="token class-name">Board</span> board <span class="token operator">=</span> boardRepository<span class="token punctuation">.</span><span class="token function">findById</span><span class="token punctuation">(</span>boardId<span class="token punctuation">)</span>
+                <span class="token punctuation">.</span><span class="token function">orElseThrow</span><span class="token punctuation">(</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token operator">-></span> <span class="token keyword">new</span> <span class="token class-name">NotFoundException</span><span class="token punctuation">(</span><span class="token string">"게시글을 찾을 수 없습니다"</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+        <span class="token keyword">if</span> <span class="token punctuation">(</span><span class="token operator">!</span>board<span class="token punctuation">.</span><span class="token function">getUser</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">getId</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">equals</span><span class="token punctuation">(</span>sessionUserId<span class="token punctuation">)</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+            <span class="token keyword">throw</span> <span class="token keyword">new</span> <span class="token class-name">ForbiddenException</span><span class="token punctuation">(</span><span class="token string">"게시글에 접근할 권한이 없습니다"</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+        <span class="token punctuation">}</span>
+        <span class="token keyword">return</span> <span class="token keyword">new</span> <span class="token class-name">BoardResponse</span><span class="token punctuation">.</span><span class="token function">DTO</span><span class="token punctuation">(</span>board<span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token punctuation">}</span>
+
+    <span class="token annotation punctuation">@Transactional</span>
+    <span class="token keyword">public</span> <span class="token class-name">BoardResponse</span><span class="token punctuation">.</span><span class="token constant">DTO</span> 게시글수정<span class="token punctuation">(</span><span class="token class-name">Integer</span> boardId<span class="token punctuation">,</span> <span class="token class-name">BoardRequest<span class="token punctuation">.</span>UpdateDTO</span> reqDTO<span class="token punctuation">,</span> <span class="token class-name">Integer</span> sessionUserId<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+        <span class="token class-name">Board</span> board <span class="token operator">=</span> boardRepository<span class="token punctuation">.</span><span class="token function">findById</span><span class="token punctuation">(</span>boardId<span class="token punctuation">)</span>
+                <span class="token punctuation">.</span><span class="token function">orElseThrow</span><span class="token punctuation">(</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token operator">-></span> <span class="token keyword">new</span> <span class="token class-name">NotFoundException</span><span class="token punctuation">(</span><span class="token string">"게시글을 찾을 수 없습니다"</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+        <span class="token keyword">if</span> <span class="token punctuation">(</span><span class="token operator">!</span>board<span class="token punctuation">.</span><span class="token function">getUser</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">getId</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">equals</span><span class="token punctuation">(</span>sessionUserId<span class="token punctuation">)</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+            <span class="token keyword">throw</span> <span class="token keyword">new</span> <span class="token class-name">ForbiddenException</span><span class="token punctuation">(</span><span class="token string">"게시글을 수정할 권한이 없습니다"</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+        <span class="token punctuation">}</span>
+        board<span class="token punctuation">.</span><span class="token function">update</span><span class="token punctuation">(</span>reqDTO<span class="token punctuation">.</span><span class="token function">title</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">,</span> reqDTO<span class="token punctuation">.</span><span class="token function">content</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// 더티 체킹</span>
+        <span class="token keyword">return</span> <span class="token keyword">new</span> <span class="token class-name">BoardResponse</span><span class="token punctuation">.</span><span class="token function">DTO</span><span class="token punctuation">(</span>board<span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token punctuation">}</span>
+
+    <span class="token annotation punctuation">@Transactional</span>
+    <span class="token keyword">public</span> <span class="token keyword">void</span> 게시글삭제<span class="token punctuation">(</span><span class="token class-name">Integer</span> boardId<span class="token punctuation">,</span> <span class="token class-name">Integer</span> sessionUserId<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+        <span class="token class-name">Board</span> board <span class="token operator">=</span> boardRepository<span class="token punctuation">.</span><span class="token function">findById</span><span class="token punctuation">(</span>boardId<span class="token punctuation">)</span>
+                <span class="token punctuation">.</span><span class="token function">orElseThrow</span><span class="token punctuation">(</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token operator">-></span> <span class="token keyword">new</span> <span class="token class-name">NotFoundException</span><span class="token punctuation">(</span><span class="token string">"게시글을 찾을 수 없습니다"</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+        <span class="token keyword">if</span> <span class="token punctuation">(</span><span class="token operator">!</span>board<span class="token punctuation">.</span><span class="token function">getUser</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">getId</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">equals</span><span class="token punctuation">(</span>sessionUserId<span class="token punctuation">)</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+            <span class="token keyword">throw</span> <span class="token keyword">new</span> <span class="token class-name">ForbiddenException</span><span class="token punctuation">(</span><span class="token string">"게시글을 삭제할 권한이 없습니다"</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+        <span class="token punctuation">}</span>
+        boardRepository<span class="token punctuation">.</span><span class="token function">delete</span><span class="token punctuation">(</span>board<span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// cascade = REMOVE 로 댓글도 함께 삭제</span>
+    <span class="token punctuation">}</span>
+<span class="token punctuation">}</span></code></pre></div></div>
+<p><strong>파일명:</strong> <code>src/main/java/com/newtenco/blog/board/BoardController.java</code></p>
+<div class="code-wrap" data-kind="code" data-lang="java"><div class="code-label"><span class="code-label__name">Java</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45
+46
+47
+48
+49
+50
+51
+52
+53
+54
+55
+56
+57
+58
+59
+60
+61</div><pre><code class="language-java" data-code="package com.newtenco.blog.board;
+
+import com.newtenco.blog.core.util.Resp;
+import com.newtenco.blog.user.User;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.*;
+
+@RequestMapping(&quot;/api/boards&quot;)
+@RequiredArgsConstructor
+@RestController
+public class BoardController {
+
+    private final BoardService boardService;
+
+    // GET /api/boards : 누구나
+    @GetMapping
+    public ResponseEntity&lt;?&gt; findAll() {
+        return Resp.ok(boardService.게시글목록());
+    }
+
+    // POST /api/boards : 로그인 필요
+    @PostMapping
+    public ResponseEntity&lt;?&gt; save(@AuthenticationPrincipal User sessionUser,
+                                  @Valid @RequestBody BoardRequest.SaveDTO reqDTO) {
+        return Resp.ok(boardService.게시글쓰기(reqDTO, sessionUser));
+    }
+
+    // GET /api/boards/1 : 누구나 (로그인하지 않았으면 sessionUser 는 null)
+    @GetMapping(&quot;/{boardId}&quot;)
+    public ResponseEntity&lt;?&gt; findById(@AuthenticationPrincipal User sessionUser,
+                                      @PathVariable(&quot;boardId&quot;) Integer boardId) {
+        Integer sessionUserId = (sessionUser == null) ? null : sessionUser.getId();
+        return Resp.ok(boardService.게시글상세(boardId, sessionUserId));
+    }
+
+    // GET /api/boards/1/edit : 작성자만
+    @GetMapping(&quot;/{boardId}/edit&quot;)
+    public ResponseEntity&lt;?&gt; updateInfo(@AuthenticationPrincipal User sessionUser,
+                                        @PathVariable(&quot;boardId&quot;) Integer boardId) {
+        return Resp.ok(boardService.게시글수정정보(boardId, sessionUser.getId()));
+    }
+
+    // PUT /api/boards/1 : 작성자만
+    @PutMapping(&quot;/{boardId}&quot;)
+    public ResponseEntity&lt;?&gt; update(@AuthenticationPrincipal User sessionUser,
+                                    @PathVariable(&quot;boardId&quot;) Integer boardId,
+                                    @Valid @RequestBody BoardRequest.UpdateDTO reqDTO) {
+        return Resp.ok(boardService.게시글수정(boardId, reqDTO, sessionUser.getId()));
+    }
+
+    // DELETE /api/boards/1 : 작성자만
+    @DeleteMapping(&quot;/{boardId}&quot;)
+    public ResponseEntity&lt;?&gt; deleteById(@AuthenticationPrincipal User sessionUser,
+                                        @PathVariable(&quot;boardId&quot;) Integer boardId) {
+        boardService.게시글삭제(boardId, sessionUser.getId());
+        return Resp.ok(null);
+    }
+}"><span class="token keyword">package</span> <span class="token namespace">com<span class="token punctuation">.</span>newtenco<span class="token punctuation">.</span>blog<span class="token punctuation">.</span>board</span><span class="token punctuation">;</span>
+
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">com<span class="token punctuation">.</span>newtenco<span class="token punctuation">.</span>blog<span class="token punctuation">.</span>core<span class="token punctuation">.</span>util<span class="token punctuation">.</span></span><span class="token class-name">Resp</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">com<span class="token punctuation">.</span>newtenco<span class="token punctuation">.</span>blog<span class="token punctuation">.</span>user<span class="token punctuation">.</span></span><span class="token class-name">User</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">jakarta<span class="token punctuation">.</span>validation<span class="token punctuation">.</span></span><span class="token class-name">Valid</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">lombok<span class="token punctuation">.</span></span><span class="token class-name">RequiredArgsConstructor</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">org<span class="token punctuation">.</span>springframework<span class="token punctuation">.</span>http<span class="token punctuation">.</span></span><span class="token class-name">ResponseEntity</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">org<span class="token punctuation">.</span>springframework<span class="token punctuation">.</span>security<span class="token punctuation">.</span>core<span class="token punctuation">.</span>annotation<span class="token punctuation">.</span></span><span class="token class-name">AuthenticationPrincipal</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">org<span class="token punctuation">.</span>springframework<span class="token punctuation">.</span>web<span class="token punctuation">.</span>bind<span class="token punctuation">.</span>annotation<span class="token punctuation">.</span></span><span class="token operator">*</span></span><span class="token punctuation">;</span>
+
+<span class="token annotation punctuation">@RequestMapping</span><span class="token punctuation">(</span><span class="token string">"/api/boards"</span><span class="token punctuation">)</span>
+<span class="token annotation punctuation">@RequiredArgsConstructor</span>
+<span class="token annotation punctuation">@RestController</span>
+<span class="token keyword">public</span> <span class="token keyword">class</span> <span class="token class-name">BoardController</span> <span class="token punctuation">{</span>
+
+    <span class="token keyword">private</span> <span class="token keyword">final</span> <span class="token class-name">BoardService</span> boardService<span class="token punctuation">;</span>
+
+    <span class="token comment">// GET /api/boards : 누구나</span>
+    <span class="token annotation punctuation">@GetMapping</span>
+    <span class="token keyword">public</span> <span class="token class-name">ResponseEntity</span><span class="token generics"><span class="token punctuation">&lt;</span><span class="token operator">?</span><span class="token punctuation">></span></span> <span class="token function">findAll</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+        <span class="token keyword">return</span> <span class="token class-name">Resp</span><span class="token punctuation">.</span><span class="token function">ok</span><span class="token punctuation">(</span>boardService<span class="token punctuation">.</span>게시글목록<span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token punctuation">}</span>
+
+    <span class="token comment">// POST /api/boards : 로그인 필요</span>
+    <span class="token annotation punctuation">@PostMapping</span>
+    <span class="token keyword">public</span> <span class="token class-name">ResponseEntity</span><span class="token generics"><span class="token punctuation">&lt;</span><span class="token operator">?</span><span class="token punctuation">></span></span> <span class="token function">save</span><span class="token punctuation">(</span><span class="token annotation punctuation">@AuthenticationPrincipal</span> <span class="token class-name">User</span> sessionUser<span class="token punctuation">,</span>
+                                  <span class="token annotation punctuation">@Valid</span> <span class="token annotation punctuation">@RequestBody</span> <span class="token class-name">BoardRequest<span class="token punctuation">.</span>SaveDTO</span> reqDTO<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+        <span class="token keyword">return</span> <span class="token class-name">Resp</span><span class="token punctuation">.</span><span class="token function">ok</span><span class="token punctuation">(</span>boardService<span class="token punctuation">.</span>게시글쓰기<span class="token punctuation">(</span>reqDTO<span class="token punctuation">,</span> sessionUser<span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token punctuation">}</span>
+
+    <span class="token comment">// GET /api/boards/1 : 누구나 (로그인하지 않았으면 sessionUser 는 null)</span>
+    <span class="token annotation punctuation">@GetMapping</span><span class="token punctuation">(</span><span class="token string">"/{boardId}"</span><span class="token punctuation">)</span>
+    <span class="token keyword">public</span> <span class="token class-name">ResponseEntity</span><span class="token generics"><span class="token punctuation">&lt;</span><span class="token operator">?</span><span class="token punctuation">></span></span> <span class="token function">findById</span><span class="token punctuation">(</span><span class="token annotation punctuation">@AuthenticationPrincipal</span> <span class="token class-name">User</span> sessionUser<span class="token punctuation">,</span>
+                                      <span class="token annotation punctuation">@PathVariable</span><span class="token punctuation">(</span><span class="token string">"boardId"</span><span class="token punctuation">)</span> <span class="token class-name">Integer</span> boardId<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+        <span class="token class-name">Integer</span> sessionUserId <span class="token operator">=</span> <span class="token punctuation">(</span>sessionUser <span class="token operator">==</span> <span class="token keyword">null</span><span class="token punctuation">)</span> <span class="token operator">?</span> <span class="token keyword">null</span> <span class="token operator">:</span> sessionUser<span class="token punctuation">.</span><span class="token function">getId</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+        <span class="token keyword">return</span> <span class="token class-name">Resp</span><span class="token punctuation">.</span><span class="token function">ok</span><span class="token punctuation">(</span>boardService<span class="token punctuation">.</span>게시글상세<span class="token punctuation">(</span>boardId<span class="token punctuation">,</span> sessionUserId<span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token punctuation">}</span>
+
+    <span class="token comment">// GET /api/boards/1/edit : 작성자만</span>
+    <span class="token annotation punctuation">@GetMapping</span><span class="token punctuation">(</span><span class="token string">"/{boardId}/edit"</span><span class="token punctuation">)</span>
+    <span class="token keyword">public</span> <span class="token class-name">ResponseEntity</span><span class="token generics"><span class="token punctuation">&lt;</span><span class="token operator">?</span><span class="token punctuation">></span></span> <span class="token function">updateInfo</span><span class="token punctuation">(</span><span class="token annotation punctuation">@AuthenticationPrincipal</span> <span class="token class-name">User</span> sessionUser<span class="token punctuation">,</span>
+                                        <span class="token annotation punctuation">@PathVariable</span><span class="token punctuation">(</span><span class="token string">"boardId"</span><span class="token punctuation">)</span> <span class="token class-name">Integer</span> boardId<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+        <span class="token keyword">return</span> <span class="token class-name">Resp</span><span class="token punctuation">.</span><span class="token function">ok</span><span class="token punctuation">(</span>boardService<span class="token punctuation">.</span>게시글수정정보<span class="token punctuation">(</span>boardId<span class="token punctuation">,</span> sessionUser<span class="token punctuation">.</span><span class="token function">getId</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token punctuation">}</span>
+
+    <span class="token comment">// PUT /api/boards/1 : 작성자만</span>
+    <span class="token annotation punctuation">@PutMapping</span><span class="token punctuation">(</span><span class="token string">"/{boardId}"</span><span class="token punctuation">)</span>
+    <span class="token keyword">public</span> <span class="token class-name">ResponseEntity</span><span class="token generics"><span class="token punctuation">&lt;</span><span class="token operator">?</span><span class="token punctuation">></span></span> <span class="token function">update</span><span class="token punctuation">(</span><span class="token annotation punctuation">@AuthenticationPrincipal</span> <span class="token class-name">User</span> sessionUser<span class="token punctuation">,</span>
+                                    <span class="token annotation punctuation">@PathVariable</span><span class="token punctuation">(</span><span class="token string">"boardId"</span><span class="token punctuation">)</span> <span class="token class-name">Integer</span> boardId<span class="token punctuation">,</span>
+                                    <span class="token annotation punctuation">@Valid</span> <span class="token annotation punctuation">@RequestBody</span> <span class="token class-name">BoardRequest<span class="token punctuation">.</span>UpdateDTO</span> reqDTO<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+        <span class="token keyword">return</span> <span class="token class-name">Resp</span><span class="token punctuation">.</span><span class="token function">ok</span><span class="token punctuation">(</span>boardService<span class="token punctuation">.</span>게시글수정<span class="token punctuation">(</span>boardId<span class="token punctuation">,</span> reqDTO<span class="token punctuation">,</span> sessionUser<span class="token punctuation">.</span><span class="token function">getId</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token punctuation">}</span>
+
+    <span class="token comment">// DELETE /api/boards/1 : 작성자만</span>
+    <span class="token annotation punctuation">@DeleteMapping</span><span class="token punctuation">(</span><span class="token string">"/{boardId}"</span><span class="token punctuation">)</span>
+    <span class="token keyword">public</span> <span class="token class-name">ResponseEntity</span><span class="token generics"><span class="token punctuation">&lt;</span><span class="token operator">?</span><span class="token punctuation">></span></span> <span class="token function">deleteById</span><span class="token punctuation">(</span><span class="token annotation punctuation">@AuthenticationPrincipal</span> <span class="token class-name">User</span> sessionUser<span class="token punctuation">,</span>
+                                        <span class="token annotation punctuation">@PathVariable</span><span class="token punctuation">(</span><span class="token string">"boardId"</span><span class="token punctuation">)</span> <span class="token class-name">Integer</span> boardId<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+        boardService<span class="token punctuation">.</span>게시글삭제<span class="token punctuation">(</span>boardId<span class="token punctuation">,</span> sessionUser<span class="token punctuation">.</span><span class="token function">getId</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+        <span class="token keyword">return</span> <span class="token class-name">Resp</span><span class="token punctuation">.</span><span class="token function">ok</span><span class="token punctuation">(</span><span class="token keyword">null</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token punctuation">}</span>
+<span class="token punctuation">}</span></code></pre></div></div>
+<p><strong>실행 결과</strong></p>
+<p>서버를 실행하고 ssar 토큰을 <code>Authorization</code> 헤더에 넣어 <code>PUT /api/boards/1</code>에 <code>{&quot;title&quot;:&quot;수정 제목&quot;,&quot;content&quot;:&quot;수정 내용&quot;}</code>을 보내면 다음과 같이 응답합니다. <code>createdAt</code>은 서버를 실행한 시각에 따라 다릅니다.</p>
+<div class="code-wrap" data-kind="output" data-lang="text"><div class="code-label"><span class="code-label__name">출력</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1</div><pre><code data-code="{&quot;status&quot;:200,&quot;msg&quot;:&quot;성공&quot;,&quot;body&quot;:{&quot;id&quot;:1,&quot;title&quot;:&quot;수정 제목&quot;,&quot;content&quot;:&quot;수정 내용&quot;,&quot;username&quot;:&quot;ssar&quot;,&quot;createdAt&quot;:&quot;...&quot;}}">{&quot;status&quot;:200,&quot;msg&quot;:&quot;성공&quot;,&quot;body&quot;:{&quot;id&quot;:1,&quot;title&quot;:&quot;수정 제목&quot;,&quot;content&quot;:&quot;수정 내용&quot;,&quot;username&quot;:&quot;ssar&quot;,&quot;createdAt&quot;:&quot;...&quot;}}</code></pre></div></div>
+<p>세 서비스 메서드는 1절의 패턴을 따르고, 3단계에서 하는 일만 다릅니다.</p>
+<table><thead><tr><th>메서드</th><th>3단계 작업</th><th>트랜잭션</th></tr></thead><tbody><tr><td><code>게시글수정정보()</code></td><td>게시글을 <code>BoardResponse.DTO</code>로 바꿔 반환</td><td>클래스의 <code>readOnly = true</code></td></tr><tr><td><code>게시글수정()</code></td><td><code>board.update()</code>로 필드 변경</td><td><code>@Transactional</code></td></tr><tr><td><code>게시글삭제()</code></td><td><code>boardRepository.delete(board)</code></td><td><code>@Transactional</code></td></tr></tbody></table>
+<p><code>게시글수정()</code>은 <code>board.update()</code>만 부르고 <code>save()</code>를 부르지 않습니다. <code>findById()</code>로 꺼낸 <code>board</code>는 영속성 컨텍스트가 관리하는 엔티티입니다. 그래서 트랜잭션이 끝날 때 JPA가 더티 체킹으로 바뀐 필드를 찾아 update 쿼리를 실행합니다. 9장 회원 수정과 같은 방식입니다. 이 메서드는 데이터를 바꾸므로 메서드에 <code>@Transactional</code>을 따로 붙여 클래스의 <code>readOnly = true</code>를 덮어씁니다.</p>
+<p>수정 정보 응답에는 목록에서 쓰던 <code>BoardResponse.DTO</code>를 그대로 씁니다. 수정 화면에 필요한 값은 제목과 내용뿐이고 댓글은 필요 없습니다. 작성자인지는 서비스가 이미 확인했으므로 <code>isOwner</code>도 필요 없습니다.</p>
+<p>컨트롤러의 새 메서드 세 개는 <code>sessionUser</code>가 null인지 검사하지 않고 바로 <code>sessionUser.getId()</code>를 부릅니다. 세 주소 모두 URL 규칙이 로그인한 요청만 통과시키므로 컨트롤러에 도착한 <code>sessionUser</code>는 null이 아닙니다. 2.1에서 본 500 오류는 이 전제가 깨질 때, 곧 edit 규칙이 없을 때 생깁니다.</p>
+<p>삭제는 돌려줄 데이터가 없으므로 <code>Resp.ok(null)</code>로 응답합니다. 4장에서 정한 대로 <code>body</code>가 null인 성공 응답입니다.</p>
+<h4>3.2 게시글을 지우면 댓글은 어떻게 되는가</h4>
+<p>reply_tb의 <code>board_id</code> 컬럼은 board_tb를 가리키는 외래 키(FK)입니다. 댓글이 달린 게시글만 지우면 남은 댓글이 존재하지 않는 게시글을 가리키게 됩니다. 그래서 DB가 삭제를 거부합니다. 게시글을 지우기 전에 그 게시글의 댓글을 먼저 지워야 합니다.</p>
+<p>2장에서 만든 <code>Board</code> 엔티티의 <code>replies</code> 필드에 댓글을 먼저 지우는 일을 맡겨 두었습니다.</p>
+<p><strong>코드 조각</strong></p>
+<div class="code-wrap" data-kind="code" data-lang="java"><div class="code-label"><span class="code-label__name">Java</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1
+2</div><pre><code class="language-java" data-code="@OneToMany(mappedBy = &quot;board&quot;, fetch = FetchType.LAZY, cascade = CascadeType.REMOVE)
+private List&lt;Reply&gt; replies = new ArrayList&lt;&gt;();"><span class="token annotation punctuation">@OneToMany</span><span class="token punctuation">(</span>mappedBy <span class="token operator">=</span> <span class="token string">"board"</span><span class="token punctuation">,</span> fetch <span class="token operator">=</span> <span class="token class-name">FetchType</span><span class="token punctuation">.</span><span class="token constant">LAZY</span><span class="token punctuation">,</span> cascade <span class="token operator">=</span> <span class="token class-name">CascadeType</span><span class="token punctuation">.</span><span class="token constant">REMOVE</span><span class="token punctuation">)</span>
+<span class="token keyword">private</span> <span class="token class-name">List</span><span class="token generics"><span class="token punctuation">&lt;</span><span class="token class-name">Reply</span><span class="token punctuation">></span></span> replies <span class="token operator">=</span> <span class="token keyword">new</span> <span class="token class-name">ArrayList</span><span class="token generics"><span class="token punctuation">&lt;</span><span class="token punctuation">></span></span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span></code></pre></div></div>
+<p><code>cascade = CascadeType.REMOVE</code>는 부모 엔티티를 삭제할 때 연관된 자식 엔티티도 함께 삭제하라는 설정입니다. <code>boardRepository.delete(board)</code>를 부르면 JPA가 <code>replies</code>의 댓글을 조회해 하나씩 삭제하고, 그다음 게시글을 삭제합니다.</p>
+<table><thead><tr><th>설정</th><th>댓글이 있는 게시글을 삭제하면</th></tr></thead><tbody><tr><td><code>cascade = CascadeType.REMOVE</code> 있음</td><td>JPA가 댓글을 먼저 지우고 게시글을 지운다</td></tr><tr><td>cascade 없음</td><td>댓글이 FK로 게시글을 참조하고 있어 DB가 삭제를 거부한다. 예외가 <code>GlobalExceptionHandler</code>의 500 처리로 간다</td></tr></tbody></table>
+<p>댓글 삭제는 DB가 아니라 JPA가 처리합니다. 그래서 댓글 수만큼 delete 쿼리가 따로 실행됩니다. 5번 게시글처럼 댓글이 두 개인 글을 지우면 서버 콘솔에 reply_tb의 select 한 번, reply_tb의 delete 두 번, board_tb의 delete 한 번이 차례로 찍힙니다.</p>
+<p>삭제에 <code>deleteById(boardId)</code>가 아니라 <code>delete(board)</code>를 쓴 이유는 작성자를 확인하려고 이미 <code>findById()</code>로 게시글을 조회했기 때문입니다. 손에 든 엔티티를 그대로 넘기면 같은 게시글을 다시 조회하지 않아도 됩니다.</p>
+<h3>4. Talend API Tester로 확인하기</h3>
+<p>7장의 <code>POST /login</code>으로 ssar와 cos의 토큰을 각각 받아 둡니다. 9장에서 만든 시나리오를 쓰면 토큰을 헤더에 자동으로 넣을 수 있습니다. 더미 데이터에서 1번 게시글의 작성자는 ssar, 5번 게시글의 작성자는 cos이고 5번 글에는 댓글이 두 개 달려 있습니다.</p>
+<p>수정과 삭제는 데이터를 바꿉니다. 아래 표의 순서대로 요청해야 표와 같은 응답을 받습니다. 순서가 어긋나면 서버를 다시 실행해 더미 데이터를 처음 상태로 되돌립니다.</p>
+<table><thead><tr><th>순서</th><th>요청</th><th>토큰</th><th>본문</th><th>응답</th></tr></thead><tbody><tr><td>1</td><td><code>GET /api/boards/1/edit</code></td><td>없음</td><td>없음</td><td>401, &quot;로그인 후 이용해주세요&quot;</td></tr><tr><td>2</td><td><code>GET /api/boards/1/edit</code></td><td>ssar</td><td>없음</td><td>200, 1번 글의 제목과 내용</td></tr><tr><td>3</td><td><code>GET /api/boards/1/edit</code></td><td>cos</td><td>없음</td><td>403, &quot;게시글에 접근할 권한이 없습니다&quot;</td></tr><tr><td>4</td><td><code>GET /api/boards/99/edit</code></td><td>cos</td><td>없음</td><td>404, &quot;게시글을 찾을 수 없습니다&quot;</td></tr><tr><td>5</td><td><code>PUT /api/boards/1</code></td><td>ssar</td><td><code>{&quot;title&quot;:&quot;수정 제목&quot;,&quot;content&quot;:&quot;수정 내용&quot;}</code></td><td>200, 바뀐 제목과 내용</td></tr><tr><td>6</td><td><code>PUT /api/boards/1</code></td><td>cos</td><td><code>{&quot;title&quot;:&quot;x&quot;,&quot;content&quot;:&quot;y&quot;}</code></td><td>403, &quot;게시글을 수정할 권한이 없습니다&quot;</td></tr><tr><td>7</td><td><code>PUT /api/boards/1</code></td><td>ssar</td><td><code>{&quot;title&quot;:&quot; &quot;,&quot;content&quot;:&quot;y&quot;}</code></td><td>400, &quot;title:제목을 입력해주세요&quot;</td></tr><tr><td>8</td><td><code>PUT /api/boards/1</code></td><td>ssar</td><td><code>{&quot;title&quot;:</code> (JSON이 끊김)</td><td>400, &quot;요청 본문(JSON) 형식이 올바르지 않습니다&quot;</td></tr><tr><td>9</td><td><code>DELETE /api/boards/1</code></td><td>cos</td><td>없음</td><td>403, &quot;게시글을 삭제할 권한이 없습니다&quot;</td></tr><tr><td>10</td><td><code>DELETE /api/boards/5</code></td><td>cos</td><td>없음</td><td>200, <code>body</code>는 null</td></tr><tr><td>11</td><td><code>GET /api/boards/5</code></td><td>없음</td><td>없음</td><td>404, &quot;게시글을 찾을 수 없습니다&quot;</td></tr></tbody></table>
+<p>1번 요청의 401은 예제 11-1에서 추가한 규칙이 필터 단계에서 응답한 결과입니다. 3번에서 cos는 ADMIN 역할이 있어도 작성자가 아니라서 403을 받습니다. 역할은 URL 규칙을 통과하는 데만 쓰이고, 작성자 확인은 서비스가 따로 합니다. 4번에서는 cos가 요청해도 403이 아니라 404를 받습니다. 1절의 순서대로 게시글이 있는지를 먼저 확인했기 때문입니다.</p>
+<p>10번 요청을 보낸 뒤 서버 콘솔을 보면 3.2에서 설명한 대로 댓글 delete 쿼리 두 개가 게시글 delete 쿼리보다 먼저 찍혀 있습니다. 11번의 404는 게시글이 실제로 지워졌다는 뜻입니다. H2 콘솔에서 reply_tb를 조회하면 <code>board_id</code>가 5인 행도 남아 있지 않습니다.</p>
+<figure class="book-figure" data-type="generated" id="figure-878c6a18fdb9"><div class="figure-scroll"><img src="../assets/img/52f65d899e92186e.png" alt="Talend API Tester에서 ssar 토큰으로 PUT http://localhost:8080/api/boards/1을 보낸 화면" data-raster="true"/></div><figcaption>Talend API Tester에서 ssar 토큰으로 PUT http://localhost:8080/api/boards/1을 보낸 화면</figcaption><p class="credit">생성형 예시 · 실제 실행 안 함</p></figure>
+<p>2.1의 문제는 직접 확인할 수도 있습니다. 예제 11-1에서 추가한 규칙 줄을 <code>GET /api/boards/**</code> 규칙 아래로 옮기고 서버를 다시 실행합니다. 1번 요청을 다시 보내면 401 대신 500, &quot;관리자에게 문의하세요&quot;를 받습니다. 확인을 마치면 규칙 줄을 원래 자리로 되돌립니다.</p><nav class="chapter-nav"><button type="button" class="text" data-prev="true" data-href="10.html">← 이전 장</button><span>11 / 13</span><button type="button" class="text" data-next="true" data-href="12.html">다음 장 →</button></nav></section></main></div><script src="../assets/book-6d8228e561daa8ba.js"></script></body></html>

@@ -1,0 +1,19 @@
+@page{size:A4;margin:20mm}
+/* 인쇄 쪽 print.html (011 FR-038, design-system 자리 표 "PDF 책"): 책 종이 모양 그대로 A4 쪽에 이어 놓는다. @page(쪽 · 여백)는 buildBook이 tokens --pdf-page · --pdf-margin 값으로 앞에 붙인다 */
+html, body { height: auto; background: var(--color-surface); }
+.print-book { padding: 0; overflow: visible; background: var(--color-surface); }
+/* 종이 틀 없이 쪽 폭을 다 쓴다. 장은 새 쪽에서 */
+.print-book .book-head, .print-book .preface, .print-book .chapter { max-width: none; margin: 0; padding: 0; border: 0; box-shadow: none; background: none; }
+.print-book .chapter { break-before: page; }
+.print-toc { break-before: page; }
+.print-toc ol { margin: var(--space-4) 0 0; padding-left: 0; list-style: none; font: var(--font-size-md)/var(--leading-body) var(--font-sans); }
+.print-toc a { color: var(--book-ink); text-decoration: none; }
+/* 코드: 줄바꿈해 쪽 밖으로 나가지 않는다. 짧은 코드 · 그림 · 표 줄은 쪽에서 끊지 않는다 */
+.print-book pre { overflow: visible; white-space: pre-wrap; overflow-wrap: anywhere; }
+.print-book .code-ln { display: none; }
+.print-book .code-wrap, .print-book .book-figure, .print-book tr, .print-book .print-shot { break-inside: avoid; }
+.print-book table { overflow: visible; }
+/* 그림: 쪽 높이 안에서 비율 그대로. 단계 그림은 모두 펼치고 k / n */
+.print-book .book-figure img, .print-book .book-figure img[data-raster] { max-width: 100%; max-height: 90vh; }
+.print-shot + .print-shot { margin-top: var(--space-4); }
+.print-step { display: block; margin-top: var(--space-1); color: var(--book-muted); font: var(--font-size-xs) var(--font-mono); }

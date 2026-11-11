@@ -1,0 +1,353 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data: blob:; font-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'"><meta name="viewport" content="width=device-width,initial-scale=1"><title>REST API 서버 구축</title><link rel="stylesheet" href="../assets/book-d4f8cb83afec858a.css"></head><body><div class="reader" data-toc="open"><header class="book-bar"><button type="button" class="toc-toggle" aria-expanded="true" aria-controls="toc">목차</button><span class="book-bar__title">REST API 서버 구축</span></header><aside class="toc" id="toc"><p class="caption">목차 / CONTENTS</p><div class="toc-title">REST API 서버 구축</div><a href="../index.html" data-chapter="0" title="표지" aria-current="false">표지</a><a href="01.html" data-chapter="1" title="1장. REST API 프로젝트 준비" aria-current="true">1장. REST API 프로젝트 준비</a><a href="02.html" data-chapter="2" title="2장. 엔티티와 더미 데이터" aria-current="false">2장. 엔티티와 더미 데이터</a><a href="03.html" data-chapter="3" title="3장. JWT란?" aria-current="false">3장. JWT란?</a><a href="04.html" data-chapter="4" title="4장. 공통 응답이란?" aria-current="false">4장. 공통 응답이란?</a><a href="05.html" data-chapter="5" title="5장. 스프링 시큐리티란?" aria-current="false">5장. 스프링 시큐리티란?</a><a href="06.html" data-chapter="6" title="6장. SecurityFilterChain 설정" aria-current="false">6장. SecurityFilterChain 설정</a><a href="07.html" data-chapter="7" title="7장. 회원 API 만들기" aria-current="false">7장. 회원 API 만들기</a><a href="08.html" data-chapter="8" title="8장. JWT 인증 전체 흐름 확인" aria-current="false">8장. JWT 인증 전체 흐름 확인</a><a href="09.html" data-chapter="9" title="9장. 회원 정보 API 만들기" aria-current="false">9장. 회원 정보 API 만들기</a><a href="10.html" data-chapter="10" title="10장. 게시글 조회와 쓰기" aria-current="false">10장. 게시글 조회와 쓰기</a><a href="11.html" data-chapter="11" title="11장. 게시글 수정과 삭제" aria-current="false">11장. 게시글 수정과 삭제</a><a href="12.html" data-chapter="12" title="12장. 댓글 API" aria-current="false">12장. 댓글 API</a><a href="13.html" data-chapter="13" title="13장. 관리자 API" aria-current="false">13장. 관리자 API</a><footer>13장</footer></aside><main class="reading"><section class="chapter" id="chapter-1"><div class="eyebrow">REST API 서버 구축 / CHAPTER 01</div><span class="chapter-num" aria-hidden="true">01</span><h2>1장. REST API 프로젝트 준비</h2><h3>1. REST API와 SSR</h3>
+<h4>1.1 REST API의 정의</h4>
+<p><strong>REST(Representational State Transfer)</strong>는 로이 필딩(Roy Fielding)이 2000년 박사학위 논문에서 제시한 웹 아키텍처 원칙입니다. <strong>REST API</strong>는 이 원칙에 따라 서버와 클라이언트가 데이터를 주고받는 방식입니다. 다룰 대상은 주소(URI)로, 할 일은 HTTP 메서드로 나타냅니다. 결과는 JSON 같은 데이터로 돌려줍니다.</p>
+<table><thead><tr><th>요소</th><th>표현 방법</th><th>예</th></tr></thead><tbody><tr><td>자원</td><td>URI</td><td><code>/api/users/me</code></td></tr><tr><td>행위</td><td>HTTP 메서드</td><td>GET 조회 · POST 생성 · PUT 수정 · DELETE 삭제</td></tr><tr><td>응답</td><td>JSON 데이터</td><td><code>{&quot;id&quot;:1,&quot;username&quot;:&quot;ssar&quot;}</code></td></tr></tbody></table>
+<p>이 책에서 만드는 서버는 화면을 만들지 않습니다. 회원가입, 로그인, 게시글 조회 같은 요청을 받아 JSON으로만 응답하는 <strong>REST API 서버</strong>를 만듭니다.</p>
+<h4>1.2 SSR 응답과 REST 응답 비교</h4>
+<p>지금까지 만든 SSR 프로젝트에서는 서버가 Mustache나 Thymeleaf로 HTML을 완성해 브라우저에 보냈습니다. 이 방식을 <strong>SSR(Server-Side Rendering, 서버 사이드 렌더링)</strong>이라고 합니다. REST API 서버는 데이터만 보내고, 화면은 그 데이터를 받은 클라이언트가 그립니다. 브라우저에서 JavaScript가 화면을 그리는 방식을 <strong>CSR(Client-Side Rendering, 클라이언트 사이드 렌더링)</strong>이라고 합니다.</p>
+<table><thead><tr><th>구분</th><th>SSR</th><th>REST API</th></tr></thead><tbody><tr><td>서버 응답</td><td>HTML 문서</td><td>JSON 데이터</td></tr><tr><td>화면을 그리는 곳</td><td>서버(Mustache, Thymeleaf)</td><td>클라이언트(React, 모바일 앱)</td></tr><tr><td>응답을 쓰는 클라이언트</td><td>주로 브라우저</td><td>브라우저, 모바일 앱, 다른 서버</td></tr></tbody></table>
+<p>같은 &quot;내 정보 보기&quot; 요청에 두 서버가 보내는 응답을 나란히 놓으면 차이가 분명히 보입니다. SSR 서버는 사람이 바로 볼 수 있는 HTML 문서를 보냅니다.</p>
+<p><strong>코드 조각</strong></p>
+<div class="code-wrap" data-kind="code" data-lang="html"><div class="code-label"><span class="code-label__name">HTML</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1</div><pre><code class="language-markup" data-code="&lt;html&gt;&lt;body&gt;&lt;h1&gt;ssar 님의 정보&lt;/h1&gt; ... &lt;/body&gt;&lt;/html&gt;"><span class="token tag"><span class="token tag"><span class="token punctuation">&lt;</span>html</span><span class="token punctuation">></span></span><span class="token tag"><span class="token tag"><span class="token punctuation">&lt;</span>body</span><span class="token punctuation">></span></span><span class="token tag"><span class="token tag"><span class="token punctuation">&lt;</span>h1</span><span class="token punctuation">></span></span>ssar 님의 정보<span class="token tag"><span class="token tag"><span class="token punctuation">&lt;/</span>h1</span><span class="token punctuation">></span></span> ... <span class="token tag"><span class="token tag"><span class="token punctuation">&lt;/</span>body</span><span class="token punctuation">></span></span><span class="token tag"><span class="token tag"><span class="token punctuation">&lt;/</span>html</span><span class="token punctuation">></span></span></code></pre></div></div>
+<p>REST API 서버는 프로그램이 읽어서 쓸 데이터를 보냅니다.</p>
+<p><strong>코드 조각</strong></p>
+<div class="code-wrap" data-kind="code" data-lang="json"><div class="code-label"><span class="code-label__name">JSON</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1</div><pre><code class="language-json" data-code="{&quot;status&quot;:200,&quot;msg&quot;:&quot;성공&quot;,&quot;body&quot;:{&quot;id&quot;:1,&quot;username&quot;:&quot;ssar&quot;}}"><span class="token punctuation">{</span><span class="token property">"status"</span><span class="token operator">:</span><span class="token number">200</span><span class="token punctuation">,</span><span class="token property">"msg"</span><span class="token operator">:</span><span class="token string">"성공"</span><span class="token punctuation">,</span><span class="token property">"body"</span><span class="token operator">:</span><span class="token punctuation">{</span><span class="token property">"id"</span><span class="token operator">:</span><span class="token number">1</span><span class="token punctuation">,</span><span class="token property">"username"</span><span class="token operator">:</span><span class="token string">"ssar"</span><span class="token punctuation">}</span><span class="token punctuation">}</span></code></pre></div></div>
+<figure class="book-figure" data-type="generated" id="figure-d77c42e48701"><div class="figure-scroll"><img src="../assets/img/8e54866bb282be90.png" alt="같은 요청, 다른 응답" data-raster="true"/></div><figcaption>같은 요청, 다른 응답</figcaption></figure>
+<p>그림 1-1처럼 REST API 서버는 데이터만 보내므로 웹과 모바일 앱이 같은 API 하나를 함께 쓸 수 있습니다. 대신 서버가 화면을 만들지 않습니다. 그래서 로그인 화면과 세션에 기대던 SSR 방식의 로그인을 그대로 쓰기 어렵습니다. 3장부터 다루는 JWT와 스프링 시큐리티 설정이 이 문제를 해결합니다.</p>
+<h3>2. 프로젝트 생성</h3>
+<h4>2.1 IntelliJ IDEA와 start.spring.io 설정</h4>
+<p>프로젝트는 <strong>start.spring.io</strong>(Spring Initializr)에서 만들어 내려받은 뒤 IntelliJ IDEA로 엽니다. IntelliJ IDEA 에디션과 상관없이 같은 방법으로 만들 수 있습니다. 브라우저에서 start.spring.io에 접속해 다음 값을 고릅니다.</p>
+<table><thead><tr><th>항목</th><th>값</th></tr></thead><tbody><tr><td>Project</td><td>Gradle - Groovy</td></tr><tr><td>Language</td><td>Java</td></tr><tr><td>Spring Boot</td><td>4.1.2</td></tr><tr><td>Group</td><td>com.newtenco</td></tr><tr><td>Artifact</td><td>blog</td></tr><tr><td>Packaging</td><td>Jar</td></tr><tr><td>Java</td><td>21</td></tr><tr><td>Dependencies</td><td>Spring Web, Spring Security, Spring Data JPA, Validation, H2 Database, Lombok, Spring Boot DevTools</td></tr></tbody></table>
+<figure class="book-figure" data-type="generated" id="figure-12f77a83e436"><div class="figure-scroll"><img src="../assets/img/833398af8b31fee6.png" alt="위 표의 값을 모두 고른 start.spring.io 화면" data-raster="true"/></div><figcaption>위 표의 값을 모두 고른 start.spring.io 화면</figcaption><p class="credit">생성형 예시 · 실제 실행 안 함</p></figure>
+<p>화면 아래 <strong>GENERATE</strong> 버튼을 누르면 <code>blog.zip</code> 파일을 내려받습니다. 압축을 풀고 IntelliJ IDEA에서 다음 순서로 엽니다.</p>
+<ol>
+<li><strong>File → Open</strong>을 눌러 압축을 푼 <code>blog</code> 폴더 안의 <code>build.gradle</code>을 고릅니다.</li>
+<li>열기 방식을 묻는 창이 나오면 <strong>Open as Project</strong>를 고릅니다.</li>
+<li>오른쪽 아래 진행 표시줄에서 Gradle 의존성 내려받기가 끝날 때까지 기다립니다.</li>
+<li><strong>File → Project Structure → Project</strong>에서 SDK가 21인지 확인합니다.</li>
+<li>Lombok 어노테이션 처리를 켜라는 알림이 나오면 <strong>Enable</strong>을 누릅니다.</li>
+</ol>
+<figure class="book-figure" data-type="generated" id="figure-02bc931c25c6"><div class="figure-scroll"><img src="../assets/img/210f6f73a8d28402.png" alt="Gradle 동기화가 끝난 IntelliJ IDEA의 Project 창" data-raster="true"/></div><figcaption>Gradle 동기화가 끝난 IntelliJ IDEA의 Project 창</figcaption><p class="credit">생성형 예시 · 실제 실행 안 함</p></figure>
+<h4>2.2 java-jwt 의존성 추가</h4>
+<p>start.spring.io 목록에는 JWT 라이브러리가 없습니다. 그래서 <code>build.gradle</code>의 <code>dependencies</code> 맨 위에 auth0의 <strong>java-jwt</strong> 한 줄을 직접 추가합니다. 3장에서 이 라이브러리로 토큰을 만들고 검증합니다.</p>
+<p><strong>예제 1-1 — java-jwt를 추가한 build.gradle</strong></p>
+<p><strong>파일명:</strong> <code>build.gradle</code></p>
+<div class="code-wrap" data-kind="code" data-lang="groovy"><div class="code-label"><span class="code-label__name">GROOVY</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45</div><pre><code data-code="plugins {
+    id &#x27;java&#x27;
+    id &#x27;org.springframework.boot&#x27; version &#x27;4.1.2&#x27;
+    id &#x27;io.spring.dependency-management&#x27; version &#x27;1.1.7&#x27;
+}
+
+group = &#x27;com.newtenco&#x27;
+version = &#x27;0.0.1-SNAPSHOT&#x27;
+description = &#x27;Spring Boot 4 + Security + JWT REST API&#x27;
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // JWT 라이브러리 (auth0)
+    implementation &#x27;com.auth0:java-jwt:4.5.0&#x27;
+
+    implementation &#x27;org.springframework.boot:spring-boot-h2console&#x27;
+    implementation &#x27;org.springframework.boot:spring-boot-starter-data-jpa&#x27;
+    implementation &#x27;org.springframework.boot:spring-boot-starter-security&#x27;
+    implementation &#x27;org.springframework.boot:spring-boot-starter-validation&#x27;
+    implementation &#x27;org.springframework.boot:spring-boot-starter-webmvc&#x27;
+    compileOnly &#x27;org.projectlombok:lombok&#x27;
+    developmentOnly &#x27;org.springframework.boot:spring-boot-devtools&#x27;
+    runtimeOnly &#x27;com.h2database:h2&#x27;
+    annotationProcessor &#x27;org.projectlombok:lombok&#x27;
+    testImplementation &#x27;org.springframework.boot:spring-boot-starter-data-jpa-test&#x27;
+    testImplementation &#x27;org.springframework.boot:spring-boot-starter-security-test&#x27;
+    testImplementation &#x27;org.springframework.boot:spring-boot-starter-validation-test&#x27;
+    testImplementation &#x27;org.springframework.boot:spring-boot-starter-webmvc-test&#x27;
+    testCompileOnly &#x27;org.projectlombok:lombok&#x27;
+    testRuntimeOnly &#x27;org.junit.platform:junit-platform-launcher&#x27;
+    testAnnotationProcessor &#x27;org.projectlombok:lombok&#x27;
+}
+
+tasks.named(&#x27;test&#x27;) {
+    useJUnitPlatform()
+}">plugins {
+    id &#x27;java&#x27;
+    id &#x27;org.springframework.boot&#x27; version &#x27;4.1.2&#x27;
+    id &#x27;io.spring.dependency-management&#x27; version &#x27;1.1.7&#x27;
+}
+
+group = &#x27;com.newtenco&#x27;
+version = &#x27;0.0.1-SNAPSHOT&#x27;
+description = &#x27;Spring Boot 4 + Security + JWT REST API&#x27;
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // JWT 라이브러리 (auth0)
+    implementation &#x27;com.auth0:java-jwt:4.5.0&#x27;
+
+    implementation &#x27;org.springframework.boot:spring-boot-h2console&#x27;
+    implementation &#x27;org.springframework.boot:spring-boot-starter-data-jpa&#x27;
+    implementation &#x27;org.springframework.boot:spring-boot-starter-security&#x27;
+    implementation &#x27;org.springframework.boot:spring-boot-starter-validation&#x27;
+    implementation &#x27;org.springframework.boot:spring-boot-starter-webmvc&#x27;
+    compileOnly &#x27;org.projectlombok:lombok&#x27;
+    developmentOnly &#x27;org.springframework.boot:spring-boot-devtools&#x27;
+    runtimeOnly &#x27;com.h2database:h2&#x27;
+    annotationProcessor &#x27;org.projectlombok:lombok&#x27;
+    testImplementation &#x27;org.springframework.boot:spring-boot-starter-data-jpa-test&#x27;
+    testImplementation &#x27;org.springframework.boot:spring-boot-starter-security-test&#x27;
+    testImplementation &#x27;org.springframework.boot:spring-boot-starter-validation-test&#x27;
+    testImplementation &#x27;org.springframework.boot:spring-boot-starter-webmvc-test&#x27;
+    testCompileOnly &#x27;org.projectlombok:lombok&#x27;
+    testRuntimeOnly &#x27;org.junit.platform:junit-platform-launcher&#x27;
+    testAnnotationProcessor &#x27;org.projectlombok:lombok&#x27;
+}
+
+tasks.named(&#x27;test&#x27;) {
+    useJUnitPlatform()
+}</code></pre></div></div>
+<p><strong>실행 결과</strong></p>
+<p><code>build.gradle</code>을 고치면 편집기 오른쪽 위에 코끼리 모양의 <strong>Load Gradle Changes</strong> 버튼이 나타납니다. 버튼을 누르면 Gradle이 의존성을 다시 내려받고, Gradle 창의 <strong>Dependencies</strong> 목록에 다음 항목이 추가됩니다.</p>
+<div class="code-wrap" data-kind="output" data-lang="text"><div class="code-label"><span class="code-label__name">출력</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1</div><pre><code data-code="com.auth0:java-jwt:4.5.0">com.auth0:java-jwt:4.5.0</code></pre></div></div>
+<p><code>plugins</code>에 적은 스프링 부트 버전이 다른 스프링 의존성의 버전까지 정합니다. 그래서 스프링 의존성에는 버전을 적지 않습니다. java-jwt는 스프링이 관리하는 라이브러리가 아니므로 <code>4.5.0</code>처럼 버전을 직접 적어야 합니다.</p>
+<h4>2.3 스프링 부트 4에서 달라진 의존성</h4>
+<p>스프링 부트 4는 자동 설정을 기술별 모듈로 잘게 나누었습니다. 그래서 예제 1-1의 의존성 이름 가운데 몇 개는 스프링 부트 3 프로젝트와 다릅니다. start.spring.io에서 <strong>Spring Web</strong>을 골랐는데 <code>spring-boot-starter-web</code>이 아니라 <code>spring-boot-starter-webmvc</code>가 들어간 것도 이 때문입니다.</p>
+<table><thead><tr><th>항목</th><th>스프링 부트 4</th><th>주의할 점</th></tr></thead><tbody><tr><td>웹 스타터</td><td><code>spring-boot-starter-webmvc</code></td><td>예전 이름 <code>spring-boot-starter-web</code>은 사용 중단(deprecated) 대상입니다</td></tr><tr><td>H2 콘솔</td><td><code>spring-boot-h2console</code></td><td>이 의존성이 없으면 <code>/h2-console</code>이 열리지 않습니다</td></tr><tr><td>테스트 스타터</td><td><code>spring-boot-starter-webmvc-test</code> 등</td><td>기술마다 테스트 스타터가 따로 있습니다</td></tr><tr><td>스프링 시큐리티</td><td>7.x</td><td>스프링 부트 4.1.2에 포함된 버전을 씁니다</td></tr><tr><td>JSON</td><td>Jackson 3</td><td>패키지 이름이 <code>com.fasterxml.jackson</code>에서 <code>tools.jackson</code>으로 바뀌었습니다</td></tr></tbody></table>
+<p>인터넷에서 찾은 예전 예제를 따라 <code>spring-boot-starter-web</code>만 적거나 H2 콘솔 모듈을 빼면, 서버는 실행되어도 H2 콘솔이 열리지 않을 수 있습니다. Jackson 3의 바뀐 패키지 이름은 6장에서 필터 단계의 응답을 직접 JSON으로 만들 때 다시 만납니다.</p>
+<h3>3. 시큐리티 기본 동작 확인</h3>
+<h4>3.1 모든 요청이 로그인 화면으로 가는 이유</h4>
+<p>설정 파일을 고치기 전에 예제 1-1 상태 그대로 서버를 실행해 봅니다. <code>BlogApplication.java</code>를 열고 <code>main()</code> 메서드 왼쪽의 실행 버튼을 누릅니다. 설정을 하나도 적지 않았지만 스프링 부트가 H2 메모리 DB를 자동으로 연결하므로 서버는 정상 실행됩니다.</p>
+<p><strong>실행 결과</strong></p>
+<p>콘솔 마지막 부분에 다음과 비슷한 줄이 출력되면 서버가 8080 포트에서 실행 중입니다.</p>
+<div class="code-wrap" data-kind="output" data-lang="text"><div class="code-label"><span class="code-label__name">출력</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1
+2</div><pre><code data-code="Tomcat started on port 8080 (http) with context path &#x27;/&#x27;
+Started BlogApplication in 3.512 seconds">Tomcat started on port 8080 (http) with context path &#x27;/&#x27;
+Started BlogApplication in 3.512 seconds</code></pre></div></div>
+<p>브라우저에서 <code>http://localhost:8080</code>에 접속하면 만든 적 없는 <strong>Please sign in</strong> 화면이 나옵니다. 주소창의 주소도 <code>http://localhost:8080/login</code>으로 바뀌어 있습니다.</p>
+<figure class="book-figure" data-type="generated" id="figure-631076488ad8"><div class="figure-scroll"><img src="../assets/img/9606937c8ffa7875.png" alt="브라우저에서 http://localhost:8080에 접속한 뒤의 화면" data-raster="true"/></div><figcaption>브라우저에서 http://localhost:8080에 접속한 뒤의 화면</figcaption><p class="credit">생성형 예시 · 실제 실행 안 함</p></figure>
+<p>스프링 부트는 의존성에 스프링 시큐리티가 있으면 <strong>애플리케이션 전체를 보호하는 기본 보안 설정</strong>을 자동으로 적용합니다. 이 기본 설정은 오류 페이지 주소 <code>/error</code>까지 포함해 모든 주소에 인증을 요구합니다. 인증이란 요청한 사람이 누구인지 확인하는 일이며, 5장에서 자세히 다룹니다. 인증되지 않은 요청이 들어오면 시큐리티는 요청한 쪽에 따라 두 방식 가운데 하나로 응답합니다.</p>
+<table><thead><tr><th>요청한 쪽</th><th>시큐리티의 응답</th></tr></thead><tbody><tr><td>HTML을 원하는 브라우저</td><td>기본 로그인 화면(<code>/login</code>)으로 이동시킵니다(폼 로그인)</td></tr><tr><td>데이터를 원하는 프로그램</td><td>화면 없이 <code>401 Unauthorized</code>로 응답합니다(HTTP Basic)</td></tr></tbody></table>
+<figure class="book-figure" data-type="generated" id="figure-ab9d4c652a45"><div class="figure-scroll"><img src="../assets/img/2dc1904a813f3f9d.png" alt="시큐리티 기본 설정이 요청을 막는 모습" data-raster="true"/></div><figcaption>시큐리티 기본 설정이 요청을 막는 모습</figcaption></figure>
+<p>그림 1-2처럼 요청이 컨트롤러에 닿기 전에 시큐리티가 먼저 거릅니다. 컨트롤러를 하나도 만들지 않았는데 로그인 화면이 나온 것은 이 때문입니다. 이 책에서는 화면이 없는 REST API 서버를 만들므로, 6장에서 이 기본 설정을 직접 만든 <code>SecurityConfig</code>로 바꿉니다.</p>
+<h4>3.2 임시 사용자와 비밀번호</h4>
+<p>로그인 화면이 있으면 로그인할 계정도 있어야 합니다. 서버를 실행한 콘솔을 위로 올려 보면 다음 줄이 있습니다.</p>
+<p><strong>실행 결과</strong></p>
+<div class="code-wrap" data-kind="output" data-lang="text"><div class="code-label"><span class="code-label__name">출력</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1</div><pre><code data-code="Using generated security password: 59a952e5-6b68-4c1b-99a1-eeb4c34d4900">Using generated security password: 59a952e5-6b68-4c1b-99a1-eeb4c34d4900</code></pre></div></div>
+<p>등록한 사용자가 없으므로 스프링 부트가 아이디가 <code>user</code>인 <strong>임시 사용자</strong>를 메모리에 하나 만든 것입니다. 비밀번호는 서버를 실행할 때마다 무작위로 새로 만들어지며, 개발할 때 확인용으로만 씁니다. 로그인 화면에 Username <code>user</code>와 콘솔의 비밀번호를 넣고 <strong>Sign in</strong>을 누릅니다.</p>
+<p><strong>실행 결과</strong></p>
+<p>로그인에 성공하면 처음 요청한 <code>http://localhost:8080/</code>으로 돌아갑니다. 스프링 시큐리티 버전에 따라 주소창에는 <code>http://localhost:8080/?continue</code>처럼 <code>?continue</code>가 붙어 보일 수 있습니다[확인 필요]. 인증은 통과했지만 <code>/</code> 주소를 처리할 컨트롤러가 없으므로 오류 화면이 나옵니다.</p>
+<div class="code-wrap" data-kind="output" data-lang="text"><div class="code-label"><span class="code-label__name">출력</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1
+2
+3
+4</div><pre><code data-code="Whitelabel Error Page
+This application has no explicit mapping for /error, so you are seeing this as a fallback.
+
+There was an unexpected error (type=Not Found, status=404).">Whitelabel Error Page
+This application has no explicit mapping for /error, so you are seeing this as a fallback.
+
+There was an unexpected error (type=Not Found, status=404).</code></pre></div></div>
+<p>로그인 화면 대신 404 화면이 나왔다는 것은 요청이 시큐리티를 지나 컨트롤러를 찾는 단계까지 갔다는 뜻입니다. 로그인 상태는 SSR에서처럼 서버 세션에 저장됩니다. 그래서 브라우저를 닫거나 <code>http://localhost:8080/logout</code>에서 로그아웃하기 전까지 유지됩니다.</p>
+<p>이 임시 사용자 로그는 6장에서 <code>SecurityConfig</code>를 작성한 뒤에도 계속 출력됩니다. 이 프로젝트는 시큐리티의 로그인 기능 대신 JWT 필터로 직접 인증하므로 이 비밀번호를 쓸 일이 없습니다. 그대로 두고 무시해도 됩니다.</p>
+<h3>4. 프로파일 설정</h3>
+<h4>4.1 공통 설정과 dev 설정 나누기</h4>
+<p><strong>프로파일(profile)</strong>은 실행 환경에 따라 다른 설정 파일을 고르는 기능입니다. 모든 환경에서 같은 설정은 <code>application.properties</code>에 두고, 개발 환경에서만 쓸 설정은 <code>application-dev.properties</code>에 따로 둡니다. 파일 이름의 <code>-</code> 뒤에 붙은 <code>dev</code>가 프로파일 이름입니다.</p>
+<p><strong>기본 문법</strong></p>
+<div class="code-wrap" data-kind="code" data-lang="properties"><div class="code-label"><span class="code-label__name">PROPERTIES</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1</div><pre><code data-code="spring.profiles.active=프로파일이름">spring.profiles.active=프로파일이름</code></pre></div></div>
+<p><code>spring.profiles.active=dev</code>라고 적으면 스프링 부트는 <code>application.properties</code>를 읽은 뒤 <code>application-dev.properties</code>를 함께 읽습니다. 두 파일에 같은 키가 있으면 프로파일 파일의 값이 적용됩니다. 나중에 운영 환경을 만들 때는 <code>application-prod.properties</code>를 추가하고 이 한 줄만 <code>prod</code>로 바꾸면 됩니다.</p>
+<h4>4.2 H2·JPA·data.sql 설정</h4>
+<p>공통 설정 파일과 dev 설정 파일을 작성합니다. 2장에서 더미 데이터를 넣을 <code>data.sql</code> 파일도 지금 미리 만들어 둡니다. 설정에 적은 위치에 파일이 없으면 서버가 시작하다가 오류로 멈추기 때문입니다.</p>
+<p><strong>예제 1-2 — 공통 설정과 dev 설정 파일 만들기</strong></p>
+<p><strong>이어서:</strong> 예제 1-1</p>
+<p><strong>파일명:</strong> <code>src/main/resources/application.properties</code></p>
+<div class="code-wrap" data-kind="code" data-lang="properties"><div class="code-label"><span class="code-label__name">PROPERTIES</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1
+2
+3</div><pre><code data-code="spring.application.name=blog
+# 프로필 설정: application-dev.properties 를 함께 읽는다
+spring.profiles.active=dev">spring.application.name=blog
+# 프로필 설정: application-dev.properties 를 함께 읽는다
+spring.profiles.active=dev</code></pre></div></div>
+<p><strong>파일명:</strong> <code>src/main/resources/application-dev.properties</code></p>
+<div class="code-wrap" data-kind="code" data-lang="properties"><div class="code-label"><span class="code-label__name">PROPERTIES</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30</div><pre><code data-code="# ===== Server =====
+server.port=8080
+server.servlet.encoding.charset=UTF-8
+server.servlet.encoding.force=true
+
+# ===== H2 Datasource (메모리 모드: 서버를 끄면 데이터가 사라짐) =====
+spring.datasource.driver-class-name=org.h2.Driver
+spring.datasource.url=jdbc:h2:mem:test
+spring.datasource.username=sa
+spring.datasource.password=
+spring.h2.console.enabled=true
+
+# ===== JPA / Hibernate =====
+# create: 실행할 때마다 테이블을 새로 만든다 (개발 단계 전용, 운영에서 사용 금지)
+spring.jpa.hibernate.ddl-auto=create
+spring.jpa.show-sql=true
+spring.jpa.properties.hibernate.format_sql=true
+spring.jpa.open-in-view=false
+
+# ===== SQL Init (data.sql) =====
+spring.sql.init.data-locations=classpath:db/data.sql
+# 테이블 생성(JPA) 이후에 data.sql 을 실행한다
+spring.jpa.defer-datasource-initialization=true
+
+# ===== Logging Level =====
+logging.level.com.newtenco.blog=DEBUG
+
+# ===== CORS Allow (콤마로 여러 개 지정 가능) =====
+# chrome-extension://* 는 Talend API Tester 같은 크롬 확장 프로그램의 요청을 허용한다
+app.cors.allowed-origins=http://localhost:3000,http://localhost:5173,chrome-extension://*"># ===== Server =====
+server.port=8080
+server.servlet.encoding.charset=UTF-8
+server.servlet.encoding.force=true
+
+# ===== H2 Datasource (메모리 모드: 서버를 끄면 데이터가 사라짐) =====
+spring.datasource.driver-class-name=org.h2.Driver
+spring.datasource.url=jdbc:h2:mem:test
+spring.datasource.username=sa
+spring.datasource.password=
+spring.h2.console.enabled=true
+
+# ===== JPA / Hibernate =====
+# create: 실행할 때마다 테이블을 새로 만든다 (개발 단계 전용, 운영에서 사용 금지)
+spring.jpa.hibernate.ddl-auto=create
+spring.jpa.show-sql=true
+spring.jpa.properties.hibernate.format_sql=true
+spring.jpa.open-in-view=false
+
+# ===== SQL Init (data.sql) =====
+spring.sql.init.data-locations=classpath:db/data.sql
+# 테이블 생성(JPA) 이후에 data.sql 을 실행한다
+spring.jpa.defer-datasource-initialization=true
+
+# ===== Logging Level =====
+logging.level.com.newtenco.blog=DEBUG
+
+# ===== CORS Allow (콤마로 여러 개 지정 가능) =====
+# chrome-extension://* 는 Talend API Tester 같은 크롬 확장 프로그램의 요청을 허용한다
+app.cors.allowed-origins=http://localhost:3000,http://localhost:5173,chrome-extension://*</code></pre></div></div>
+<p><strong>파일명:</strong> <code>src/main/resources/db/data.sql</code></p>
+<div class="code-wrap" data-kind="code" data-lang="sql"><div class="code-label"><span class="code-label__name">SQL</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1</div><pre><code class="language-sql" data-code="-- 2장에서 더미 데이터를 채운다"><span class="token comment">-- 2장에서 더미 데이터를 채운다</span></code></pre></div></div>
+<p><strong>실행 결과</strong></p>
+<p>서버를 다시 실행하면 콘솔 앞부분에 dev 프로파일이 적용되었다는 줄이 나옵니다.</p>
+<div class="code-wrap" data-kind="output" data-lang="text"><div class="code-label"><span class="code-label__name">출력</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1</div><pre><code data-code="The following 1 profile is active: &quot;dev&quot;">The following 1 profile is active: &quot;dev&quot;</code></pre></div></div>
+<p>JPA·H2 설정은 SSR 프로젝트에서 써 본 것과 거의 같습니다. 이 책에서 눈여겨볼 설정만 표로 정리합니다.</p>
+<table><thead><tr><th>설정</th><th>의미</th></tr></thead><tbody><tr><td><code>spring.datasource.url=jdbc:h2:mem:test</code></td><td>메모리 DB를 씁니다. 서버를 끄면 데이터가 사라집니다</td></tr><tr><td><code>spring.jpa.hibernate.ddl-auto=create</code></td><td>실행할 때마다 테이블을 새로 만듭니다. 개발 단계 전용입니다</td></tr><tr><td><code>spring.sql.init.data-locations</code></td><td>서버가 시작할 때 실행할 SQL 파일의 위치입니다</td></tr><tr><td><code>spring.jpa.defer-datasource-initialization=true</code></td><td>JPA가 테이블을 만든 다음에 <code>data.sql</code>을 실행합니다</td></tr><tr><td><code>spring.jpa.open-in-view=false</code></td><td>응답을 만들기 전에 DB 연결을 반납합니다</td></tr><tr><td><code>spring.h2.console.enabled=true</code></td><td>H2 콘솔을 켭니다</td></tr><tr><td><code>app.cors.allowed-origins</code></td><td>직접 정한 설정 값입니다. 6장 CORS 설정에서 읽어 씁니다</td></tr></tbody></table>
+<p><code>defer-datasource-initialization</code>을 빼면 <code>data.sql</code>이 테이블보다 먼저 실행되어 &quot;테이블이 없다&quot;는 오류가 납니다. 서버를 띄울 때마다 테이블을 새로 만들고 더미 데이터를 다시 넣습니다. 그래서 실습하다 데이터가 꼬여도 서버를 재시작하면 처음 상태로 돌아갑니다.</p>
+<p><code>open-in-view=false</code>로 두면 서비스 계층을 벗어난 뒤에는 지연 로딩(LAZY)을 할 수 없습니다. 그래서 응답에 필요한 데이터는 서비스 안에서 모두 꺼내 DTO에 담아야 합니다. 10장에서 fetch join으로 조회 쿼리를 만드는 이유가 여기에 있습니다.</p>
+<p>H2 콘솔은 켜 두었지만 지금 <code>http://localhost:8080/h2-console</code>에 접속하면 시큐리티가 막아 로그인 화면이 나옵니다. 콘솔 접근은 6장에서 허용합니다.</p>
+<h3>5. Talend API Tester 준비</h3>
+<h4>5.1 설치와 화면 구성</h4>
+<p>REST API 서버에는 HTML 화면이 없습니다. 브라우저 주소창만으로는 POST 요청을 보내거나 헤더를 넣을 수도 없습니다. 그래서 요청을 직접 만들어 보내고 응답을 보여 주는 도구를 씁니다. 이 책에서는 크롬 확장 프로그램인 <strong>Talend API Tester</strong>를 씁니다.</p>
+<ol>
+<li>크롬 웹 스토어에서 &quot;Talend API Tester - Free Edition&quot;을 검색합니다.</li>
+<li><strong>Chrome에 추가</strong>를 누릅니다.</li>
+<li>크롬 툴바의 확장 프로그램 아이콘에서 Talend API Tester를 눌러 실행합니다.</li>
+</ol>
+<p>Talend API Tester 화면은 위쪽 요청 영역과 아래쪽 응답 영역으로 나뉩니다. 요청 영역에서 보낼 내용을 채우고, 응답 영역에서 서버가 돌려준 결과를 읽습니다.</p>
+<table><thead><tr><th>영역</th><th>칸</th><th>하는 일</th></tr></thead><tbody><tr><td>요청</td><td>METHOD</td><td>GET · POST · PUT · DELETE 가운데 하나를 고릅니다</td></tr><tr><td>요청</td><td>URL</td><td>요청을 보낼 주소를 적습니다</td></tr><tr><td>요청</td><td>HEADERS</td><td><code>Content-Type</code>, <code>Authorization</code> 같은 요청 헤더를 추가합니다</td></tr><tr><td>요청</td><td>BODY</td><td>POST · PUT 요청에 담을 JSON을 적습니다</td></tr><tr><td>요청</td><td>Send</td><td>요청을 보냅니다</td></tr><tr><td>응답</td><td>상태 코드</td><td><code>200</code>, <code>401</code> 같은 HTTP 상태 코드가 색으로 표시됩니다</td></tr><tr><td>응답</td><td>HEADERS</td><td>서버가 보낸 응답 헤더입니다</td></tr><tr><td>응답</td><td>BODY</td><td>서버가 보낸 응답 본문입니다. JSON이면 보기 좋게 정렬해 줍니다</td></tr></tbody></table>
+<figure class="book-figure" data-type="generated" id="figure-c813c31e0883"><div class="figure-scroll"><img src="../assets/img/a493b56e68fc92fb.png" alt="실행 직후의 Talend API Tester 화면" data-raster="true"/></div><figcaption>실행 직후의 Talend API Tester 화면</figcaption><p class="credit">생성형 예시 · 실제 실행 안 함</p></figure>
+<p>7장부터 회원가입, 로그인, 토큰을 넣은 요청을 모두 이 화면에서 보냅니다. 요청 헤더에 토큰을 넣는 방법은 8장에서 다룹니다.</p>
+<h4>5.2 요청 보내고 응답 읽기</h4>
+<p>서버를 실행한 상태에서, 3.1절에서 브라우저로 보낸 요청을 Talend API Tester로 다시 보냅니다. 이번에는 <code>Accept</code> 헤더에 <code>application/json</code>을 넣어 HTML이 아니라 데이터를 원하는 클라이언트라고 알립니다.</p>
+<table><thead><tr><th>입력 칸</th><th>값</th></tr></thead><tbody><tr><td>METHOD</td><td>GET</td></tr><tr><td>URL</td><td><code>http://localhost:8080/</code></td></tr><tr><td>HEADERS</td><td><code>Accept: application/json</code></td></tr></tbody></table>
+<p><strong>실행 결과</strong></p>
+<p>응답 영역에 다음 내용이 표시됩니다. BODY는 비어 있습니다.</p>
+<div class="code-wrap" data-kind="output" data-lang="text"><div class="code-label"><span class="code-label__name">출력</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1
+2
+3</div><pre><code data-code="401 Unauthorized
+
+WWW-Authenticate: Basic realm=&quot;Realm&quot;">401 Unauthorized
+
+WWW-Authenticate: Basic realm=&quot;Realm&quot;</code></pre></div></div>
+<figure class="book-figure" data-type="generated" id="figure-b8ed591b4604"><div class="figure-scroll"><img src="../assets/img/f1a14bc17bf05118.png" alt="위 요청을 보낸 뒤의 Talend API Tester 화면" data-raster="true"/></div><figcaption>위 요청을 보낸 뒤의 Talend API Tester 화면</figcaption><p class="credit">생성형 예시 · 실제 실행 안 함</p></figure>
+<p>같은 주소에 요청했는데 브라우저는 로그인 화면으로 이동했고, Talend API Tester는 401 상태 코드만 받았습니다. 3.1절의 표처럼 시큐리티가 요청 헤더를 보고 클라이언트가 HTML을 원하지 않는다고 판단해 HTTP Basic 방식으로 응답한 것입니다. <code>WWW-Authenticate</code> 헤더는 &quot;아이디와 비밀번호를 Basic 방식으로 보내라&quot;는 뜻입니다.</p>
+<p>응답은 상태 코드, 헤더, 본문 순서로 읽습니다. 상태 코드로 성공과 실패를 먼저 판단하고, 실패면 헤더와 본문에서 이유를 찾습니다. 지금 응답은 본문이 비어 있어서 클라이언트가 실패한 이유를 알기 어렵습니다. 4장에서 모든 응답을 <code>{&quot;status&quot;:..., &quot;msg&quot;:..., &quot;body&quot;:...}</code> 모양으로 통일하고, 6장에서 시큐리티가 막은 요청도 같은 JSON 모양으로 응답하게 바꿉니다.</p><nav class="chapter-nav"><button type="button" class="text" data-prev="true" disabled="">← 이전 장</button><span>1 / 13</span><button type="button" class="text" data-next="true" data-href="02.html">다음 장 →</button></nav></section></main></div><script src="../assets/book-6d8228e561daa8ba.js"></script></body></html>

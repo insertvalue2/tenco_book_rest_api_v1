@@ -1,0 +1,508 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data: blob:; font-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'"><meta name="viewport" content="width=device-width,initial-scale=1"><title>REST API 서버 구축</title><link rel="stylesheet" href="../assets/book-d4f8cb83afec858a.css"></head><body><div class="reader" data-toc="open"><header class="book-bar"><button type="button" class="toc-toggle" aria-expanded="true" aria-controls="toc">목차</button><span class="book-bar__title">REST API 서버 구축</span></header><aside class="toc" id="toc"><p class="caption">목차 / CONTENTS</p><div class="toc-title">REST API 서버 구축</div><a href="../index.html" data-chapter="0" title="표지" aria-current="false">표지</a><a href="01.html" data-chapter="1" title="1장. REST API 프로젝트 준비" aria-current="false">1장. REST API 프로젝트 준비</a><a href="02.html" data-chapter="2" title="2장. 엔티티와 더미 데이터" aria-current="false">2장. 엔티티와 더미 데이터</a><a href="03.html" data-chapter="3" title="3장. JWT란?" aria-current="false">3장. JWT란?</a><a href="04.html" data-chapter="4" title="4장. 공통 응답이란?" aria-current="true">4장. 공통 응답이란?</a><a href="05.html" data-chapter="5" title="5장. 스프링 시큐리티란?" aria-current="false">5장. 스프링 시큐리티란?</a><a href="06.html" data-chapter="6" title="6장. SecurityFilterChain 설정" aria-current="false">6장. SecurityFilterChain 설정</a><a href="07.html" data-chapter="7" title="7장. 회원 API 만들기" aria-current="false">7장. 회원 API 만들기</a><a href="08.html" data-chapter="8" title="8장. JWT 인증 전체 흐름 확인" aria-current="false">8장. JWT 인증 전체 흐름 확인</a><a href="09.html" data-chapter="9" title="9장. 회원 정보 API 만들기" aria-current="false">9장. 회원 정보 API 만들기</a><a href="10.html" data-chapter="10" title="10장. 게시글 조회와 쓰기" aria-current="false">10장. 게시글 조회와 쓰기</a><a href="11.html" data-chapter="11" title="11장. 게시글 수정과 삭제" aria-current="false">11장. 게시글 수정과 삭제</a><a href="12.html" data-chapter="12" title="12장. 댓글 API" aria-current="false">12장. 댓글 API</a><a href="13.html" data-chapter="13" title="13장. 관리자 API" aria-current="false">13장. 관리자 API</a><footer>13장</footer></aside><main class="reading"><section class="chapter" id="chapter-4"><div class="eyebrow">REST API 서버 구축 / CHAPTER 04</div><span class="chapter-num" aria-hidden="true">04</span><h2>4장. 공통 응답이란?</h2><p>컨트롤러는 성공하면 데이터를 돌려주고, 실패하면 상태 코드와 이유를 돌려줍니다. SSR 프로젝트에서는 실패했을 때 오류 페이지나 알림 창을 띄우면 됐습니다. REST API 서버는 JSON만 돌려주므로, 성공 응답과 실패 응답의 모양을 서버가 먼저 정해 두어야 합니다. 이 장에서는 모든 응답을 담을 <code>Resp</code>, 상태 코드별 예외 네 개, 예외를 한곳에서 받아 <code>Resp</code>로 바꾸는 <code>GlobalExceptionHandler</code>를 만듭니다.</p>
+<h3>1. 응답 모양을 통일하는 이유</h3>
+<p><strong>공통 응답</strong>은 성공이든 실패든 모든 API가 같은 모양의 JSON으로 응답하도록 정한 형식입니다. 이 책에서는 <code>status</code> · <code>msg</code> · <code>body</code> 세 필드를 씁니다.</p>
+<p>모양을 정하지 않으면 API마다 응답이 제각각입니다. 조회 API는 데이터만 보내고, 삭제 API는 본문 없이 보내고, 오류가 나면 스프링 기본 오류 응답이 나갑니다.</p>
+<table><thead><tr><th>상황</th><th>통일하지 않은 응답</th><th>공통 응답</th></tr></thead><tbody><tr><td>조회 성공</td><td><code>{&quot;id&quot;:1,&quot;username&quot;:&quot;ssar&quot;}</code></td><td><code>{&quot;status&quot;:200,&quot;msg&quot;:&quot;성공&quot;,&quot;body&quot;:{&quot;id&quot;:1,&quot;username&quot;:&quot;ssar&quot;}}</code></td></tr><tr><td>삭제 성공</td><td>(본문 없음)</td><td><code>{&quot;status&quot;:200,&quot;msg&quot;:&quot;성공&quot;,&quot;body&quot;:null}</code></td></tr><tr><td>실패</td><td><code>{&quot;timestamp&quot;:&quot;...&quot;,&quot;status&quot;:400,&quot;error&quot;:&quot;Bad Request&quot;,&quot;path&quot;:&quot;...&quot;}</code></td><td><code>{&quot;status&quot;:400,&quot;msg&quot;:&quot;이미 존재하는 유저네임입니다&quot;,&quot;body&quot;:null}</code></td></tr></tbody></table>
+<p>가운데 열처럼 응답이 제각각이면 프런트엔드 개발자는 API마다 응답을 읽는 코드를 따로 짜야 합니다. 스프링 기본 오류 응답에는 사용자에게 보여 줄 만한 메시지도 없습니다. 오른쪽 열처럼 모양을 하나로 맞추면 읽는 방법도 하나로 줄어듭니다. <code>status</code>를 확인하고, 성공이면 <code>body</code>를 쓰고 실패면 <code>msg</code>를 화면에 보여 주면 됩니다.</p>
+<h3>2. Resp</h3>
+<h4>2.1 record로 만든 응답 상자</h4>
+<p><code>Resp</code>는 <code>status</code> · <code>msg</code> · <code>body</code>를 담는 상자입니다. 값을 담아 JSON으로 내보내기만 하고 바꿀 일이 없으므로 <strong>record</strong>로 만듭니다. record는 자바 16부터 정식으로 쓸 수 있는 클래스 형태입니다. 괄호 안에 필드를 적으면 컴파일러가 그 필드로 생성자와 접근자 메서드를 만들어 줍니다.</p>
+<p><strong>기본 문법</strong></p>
+<div class="code-wrap" data-kind="code" data-lang="java"><div class="code-label"><span class="code-label__name">Java</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1
+2
+3</div><pre><code class="language-java" data-code="public record 이름(타입 필드1, 타입 필드2) {
+    // 필요하면 메서드를 추가한다
+}"><span class="token keyword">public</span> <span class="token keyword">record</span> 이름<span class="token punctuation">(</span>타입 필드<span class="token number">1</span><span class="token punctuation">,</span> 타입 필드<span class="token number">2</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+    <span class="token comment">// 필요하면 메서드를 추가한다</span>
+<span class="token punctuation">}</span></code></pre></div></div>
+<p><code>record Resp(Integer status, String msg, Object body)</code>라고 쓰면 <code>private final</code> 필드 세 개, 세 값을 받는 생성자, <code>status()</code> · <code>msg()</code> · <code>body()</code> 접근자가 생깁니다. 일반 클래스와 달리 접근자 이름에 <code>get</code>이 붙지 않습니다. JSON 변환을 맡는 Jackson은 record의 접근자를 읽어 필드 이름 그대로 JSON 키를 만듭니다. record는 DTO를 만들 때 본격적으로 쓰므로 자세한 문법은 7장에서 다룹니다.</p>
+<p><code>body</code>에는 회원 정보, 게시글 목록, 토큰처럼 API마다 다른 값이 들어갑니다. 그래서 <code>body</code>의 타입을 제네릭 <code>T</code>로 열어 둡니다.</p>
+<p>이 장의 파일 경로는 기본 패키지 <code>com.newtenco.blog</code> 아래를 기준으로 적습니다.</p>
+<p><strong>예제 4-1 — 공통 응답 Resp 만들기</strong></p>
+<p><strong>파일명:</strong> <code>core/util/Resp.java</code></p>
+<div class="code-wrap" data-kind="code" data-lang="java"><div class="code-label"><span class="code-label__name">Java</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19</div><pre><code class="language-java" data-code="package com.newtenco.blog.core.util;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+
+/**
+ * 모든 API 응답을 같은 모양으로 맞추는 공통 상자.
+ * { &quot;status&quot;: 200, &quot;msg&quot;: &quot;성공&quot;, &quot;body&quot;: { ... } }
+ */
+public record Resp&lt;T&gt;(Integer status, String msg, T body) {
+
+    public static &lt;B&gt; ResponseEntity&lt;Resp&lt;B&gt;&gt; ok(B body) {
+        return ResponseEntity.ok(new Resp&lt;&gt;(200, &quot;성공&quot;, body));
+    }
+
+    public static ResponseEntity&lt;Resp&lt;Void&gt;&gt; fail(HttpStatus status, String msg) {
+        return ResponseEntity.status(status).body(new Resp&lt;&gt;(status.value(), msg, null));
+    }
+}"><span class="token keyword">package</span> <span class="token namespace">com<span class="token punctuation">.</span>newtenco<span class="token punctuation">.</span>blog<span class="token punctuation">.</span>core<span class="token punctuation">.</span>util</span><span class="token punctuation">;</span>
+
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">org<span class="token punctuation">.</span>springframework<span class="token punctuation">.</span>http<span class="token punctuation">.</span></span><span class="token class-name">HttpStatus</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">org<span class="token punctuation">.</span>springframework<span class="token punctuation">.</span>http<span class="token punctuation">.</span></span><span class="token class-name">ResponseEntity</span></span><span class="token punctuation">;</span>
+
+<span class="token comment">/**
+ * 모든 API 응답을 같은 모양으로 맞추는 공통 상자.
+ * { "status": 200, "msg": "성공", "body": { ... } }
+ */</span>
+<span class="token keyword">public</span> <span class="token keyword">record</span> <span class="token class-name">Resp</span><span class="token generics"><span class="token punctuation">&lt;</span><span class="token class-name">T</span><span class="token punctuation">></span></span><span class="token punctuation">(</span><span class="token class-name">Integer</span> status<span class="token punctuation">,</span> <span class="token class-name">String</span> msg<span class="token punctuation">,</span> <span class="token class-name">T</span> body<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+
+    <span class="token keyword">public</span> <span class="token keyword">static</span> <span class="token generics"><span class="token punctuation">&lt;</span><span class="token class-name">B</span><span class="token punctuation">></span></span> <span class="token class-name">ResponseEntity</span><span class="token generics"><span class="token punctuation">&lt;</span><span class="token class-name">Resp</span><span class="token punctuation">&lt;</span><span class="token class-name">B</span><span class="token punctuation">></span><span class="token punctuation">></span></span> <span class="token function">ok</span><span class="token punctuation">(</span><span class="token class-name">B</span> body<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+        <span class="token keyword">return</span> <span class="token class-name">ResponseEntity</span><span class="token punctuation">.</span><span class="token function">ok</span><span class="token punctuation">(</span><span class="token keyword">new</span> <span class="token class-name">Resp</span><span class="token generics"><span class="token punctuation">&lt;</span><span class="token punctuation">></span></span><span class="token punctuation">(</span><span class="token number">200</span><span class="token punctuation">,</span> <span class="token string">"성공"</span><span class="token punctuation">,</span> body<span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token punctuation">}</span>
+
+    <span class="token keyword">public</span> <span class="token keyword">static</span> <span class="token class-name">ResponseEntity</span><span class="token generics"><span class="token punctuation">&lt;</span><span class="token class-name">Resp</span><span class="token punctuation">&lt;</span><span class="token class-name">Void</span><span class="token punctuation">></span><span class="token punctuation">></span></span> <span class="token function">fail</span><span class="token punctuation">(</span><span class="token class-name">HttpStatus</span> status<span class="token punctuation">,</span> <span class="token class-name">String</span> msg<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+        <span class="token keyword">return</span> <span class="token class-name">ResponseEntity</span><span class="token punctuation">.</span><span class="token function">status</span><span class="token punctuation">(</span>status<span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">body</span><span class="token punctuation">(</span><span class="token keyword">new</span> <span class="token class-name">Resp</span><span class="token generics"><span class="token punctuation">&lt;</span><span class="token punctuation">></span></span><span class="token punctuation">(</span>status<span class="token punctuation">.</span><span class="token function">value</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">,</span> msg<span class="token punctuation">,</span> <span class="token keyword">null</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token punctuation">}</span>
+<span class="token punctuation">}</span></code></pre></div></div>
+<p>두 정적 메서드는 <code>Resp</code>를 <code>ResponseEntity</code>에 담아 돌려줍니다. <strong>ResponseEntity</strong>는 HTTP 응답 전체(상태 코드 · 헤더 · 본문)를 표현하는 스프링 클래스입니다. 본문만 돌려주면 HTTP 상태 코드는 항상 200이 됩니다. 실패 응답의 상태 코드를 400이나 404로 정하려고 <code>ResponseEntity</code>로 감쌉니다.</p>
+<p><code>ok()</code>에는 <code>&lt;B&gt;</code>라는 타입 매개변수가 따로 붙어 있습니다. 클래스의 <code>T</code>는 객체를 만들 때 정해지는 타입이라 정적 메서드에서 쓸 수 없습니다. 그래서 정적 메서드가 자기 타입 매개변수를 선언하고, 넘겨받은 <code>body</code>의 타입으로 <code>Resp&lt;B&gt;</code>를 만듭니다.</p>
+<h4>2.2 ok()와 fail()</h4>
+<p>성공 응답은 <code>ok()</code>, 실패 응답은 <code>fail()</code>로 만듭니다.</p>
+<table><thead><tr><th>메서드</th><th>쓰는 곳</th><th>HTTP 상태 코드</th><th>본문</th></tr></thead><tbody><tr><td><code>Resp.ok(body)</code></td><td>컨트롤러</td><td>200</td><td><code>{&quot;status&quot;:200,&quot;msg&quot;:&quot;성공&quot;,&quot;body&quot;:...}</code></td></tr><tr><td><code>Resp.fail(status, msg)</code></td><td><code>GlobalExceptionHandler</code></td><td>넘긴 <code>status</code></td><td><code>{&quot;status&quot;:...,&quot;msg&quot;:...,&quot;body&quot;:null}</code></td></tr></tbody></table>
+<p>컨트롤러는 성공한 경우만 책임집니다. 서비스가 돌려준 값을 <code>Resp.ok()</code>에 넣어 반환하면 끝입니다.</p>
+<p><strong>코드 조각</strong></p>
+<div class="code-wrap" data-kind="code" data-lang="java"><div class="code-label"><span class="code-label__name">Java</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1
+2
+3
+4
+5</div><pre><code class="language-java" data-code="@GetMapping(&quot;/api/boards/{id}&quot;)
+public ResponseEntity&lt;?&gt; detail(@PathVariable Integer id) {
+    BoardResponse.Detail respDTO = boardService.상세보기(id);
+    return Resp.ok(respDTO);
+}"><span class="token annotation punctuation">@GetMapping</span><span class="token punctuation">(</span><span class="token string">"/api/boards/{id}"</span><span class="token punctuation">)</span>
+<span class="token keyword">public</span> <span class="token class-name">ResponseEntity</span><span class="token generics"><span class="token punctuation">&lt;</span><span class="token operator">?</span><span class="token punctuation">></span></span> <span class="token function">detail</span><span class="token punctuation">(</span><span class="token annotation punctuation">@PathVariable</span> <span class="token class-name">Integer</span> id<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+    <span class="token class-name">BoardResponse<span class="token punctuation">.</span>Detail</span> respDTO <span class="token operator">=</span> boardService<span class="token punctuation">.</span>상세보기<span class="token punctuation">(</span>id<span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token keyword">return</span> <span class="token class-name">Resp</span><span class="token punctuation">.</span><span class="token function">ok</span><span class="token punctuation">(</span>respDTO<span class="token punctuation">)</span><span class="token punctuation">;</span>
+<span class="token punctuation">}</span></code></pre></div></div>
+<p>실패 응답은 컨트롤러가 직접 만들지 않습니다. 서비스가 예외를 던지면 4절의 <code>GlobalExceptionHandler</code>가 받아서 <code>Resp.fail()</code>로 응답합니다. 그래서 <code>fail()</code>은 처리기에서만 씁니다. <code>fail()</code>의 <code>body</code>는 항상 <code>null</code>이므로 타입을 &quot;값 없음&quot;을 뜻하는 <code>Void</code>로 정했습니다.</p>
+<p><code>fail()</code>은 HTTP 상태 코드와 본문의 <code>status</code>에 같은 값을 넣습니다. 상태 코드가 두 군데에 있는 셈입니다. HTTP 상태 코드는 브라우저와 HTTP 클라이언트 라이브러리가 성공과 실패를 판단할 때 쓰고, 본문의 <code>status</code>는 JSON만 받아서 처리하는 프런트엔드 코드가 씁니다.</p>
+<h3>3. 사용자 정의 예외</h3>
+<h4>3.1 상태 코드별 예외(400·401·403·404)</h4>
+<p>서비스 코드는 예외를 던져서 실패를 알립니다. 처리기는 예외 종류를 보고 상태 코드를 정하므로, 이 프로젝트에서 자주 쓰는 실패 상태 코드마다 예외 클래스를 하나씩 만듭니다.</p>
+<table><thead><tr><th>예외</th><th>상태 코드</th><th>던지는 상황(예)</th></tr></thead><tbody><tr><td><code>BadRequestException</code></td><td>400 Bad Request</td><td>이미 존재하는 유저네임으로 가입</td></tr><tr><td><code>UnauthorizedException</code></td><td>401 Unauthorized</td><td>로그인할 때 비밀번호 불일치</td></tr><tr><td><code>ForbiddenException</code></td><td>403 Forbidden</td><td>남의 게시글 수정</td></tr><tr><td><code>NotFoundException</code></td><td>404 Not Found</td><td>없는 게시글 조회</td></tr></tbody></table>
+<p>401과 403의 차이는 5장에서 인증과 인가를 배울 때 정리합니다. 여기서는 401은 &quot;누구인지 확인하지 못함&quot;, 403은 &quot;누구인지는 알지만 권한이 없음&quot;으로 기억해 두면 됩니다.</p>
+<p><strong>예제 4-2 — 상태 코드별 예외 만들기</strong></p>
+<p><strong>이어서:</strong> 예제 4-1</p>
+<p><code>core/handler/errors</code> 패키지에 네 파일을 만듭니다. 네 파일은 클래스 이름과 주석만 다르고 모양은 같습니다.</p>
+<p><strong>파일명:</strong> <code>core/handler/errors/BadRequestException.java</code></p>
+<div class="code-wrap" data-kind="code" data-lang="java"><div class="code-label"><span class="code-label__name">Java</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1
+2
+3
+4
+5
+6
+7
+8</div><pre><code class="language-java" data-code="package com.newtenco.blog.core.handler.errors;
+
+// 400: 잘못된 요청 (예: 이미 존재하는 유저네임)
+public class BadRequestException extends RuntimeException {
+    public BadRequestException(String msg) {
+        super(msg);
+    }
+}"><span class="token keyword">package</span> <span class="token namespace">com<span class="token punctuation">.</span>newtenco<span class="token punctuation">.</span>blog<span class="token punctuation">.</span>core<span class="token punctuation">.</span>handler<span class="token punctuation">.</span>errors</span><span class="token punctuation">;</span>
+
+<span class="token comment">// 400: 잘못된 요청 (예: 이미 존재하는 유저네임)</span>
+<span class="token keyword">public</span> <span class="token keyword">class</span> <span class="token class-name">BadRequestException</span> <span class="token keyword">extends</span> <span class="token class-name">RuntimeException</span> <span class="token punctuation">{</span>
+    <span class="token keyword">public</span> <span class="token class-name">BadRequestException</span><span class="token punctuation">(</span><span class="token class-name">String</span> msg<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+        <span class="token keyword">super</span><span class="token punctuation">(</span>msg<span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token punctuation">}</span>
+<span class="token punctuation">}</span></code></pre></div></div>
+<p><strong>파일명:</strong> <code>core/handler/errors/UnauthorizedException.java</code></p>
+<div class="code-wrap" data-kind="code" data-lang="java"><div class="code-label"><span class="code-label__name">Java</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1
+2
+3
+4
+5
+6
+7
+8</div><pre><code class="language-java" data-code="package com.newtenco.blog.core.handler.errors;
+
+// 401: 인증 실패 (예: 비밀번호 불일치)
+public class UnauthorizedException extends RuntimeException {
+    public UnauthorizedException(String msg) {
+        super(msg);
+    }
+}"><span class="token keyword">package</span> <span class="token namespace">com<span class="token punctuation">.</span>newtenco<span class="token punctuation">.</span>blog<span class="token punctuation">.</span>core<span class="token punctuation">.</span>handler<span class="token punctuation">.</span>errors</span><span class="token punctuation">;</span>
+
+<span class="token comment">// 401: 인증 실패 (예: 비밀번호 불일치)</span>
+<span class="token keyword">public</span> <span class="token keyword">class</span> <span class="token class-name">UnauthorizedException</span> <span class="token keyword">extends</span> <span class="token class-name">RuntimeException</span> <span class="token punctuation">{</span>
+    <span class="token keyword">public</span> <span class="token class-name">UnauthorizedException</span><span class="token punctuation">(</span><span class="token class-name">String</span> msg<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+        <span class="token keyword">super</span><span class="token punctuation">(</span>msg<span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token punctuation">}</span>
+<span class="token punctuation">}</span></code></pre></div></div>
+<p><strong>파일명:</strong> <code>core/handler/errors/ForbiddenException.java</code></p>
+<div class="code-wrap" data-kind="code" data-lang="java"><div class="code-label"><span class="code-label__name">Java</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1
+2
+3
+4
+5
+6
+7
+8</div><pre><code class="language-java" data-code="package com.newtenco.blog.core.handler.errors;
+
+// 403: 권한 없음 (예: 남의 글 수정)
+public class ForbiddenException extends RuntimeException {
+    public ForbiddenException(String msg) {
+        super(msg);
+    }
+}"><span class="token keyword">package</span> <span class="token namespace">com<span class="token punctuation">.</span>newtenco<span class="token punctuation">.</span>blog<span class="token punctuation">.</span>core<span class="token punctuation">.</span>handler<span class="token punctuation">.</span>errors</span><span class="token punctuation">;</span>
+
+<span class="token comment">// 403: 권한 없음 (예: 남의 글 수정)</span>
+<span class="token keyword">public</span> <span class="token keyword">class</span> <span class="token class-name">ForbiddenException</span> <span class="token keyword">extends</span> <span class="token class-name">RuntimeException</span> <span class="token punctuation">{</span>
+    <span class="token keyword">public</span> <span class="token class-name">ForbiddenException</span><span class="token punctuation">(</span><span class="token class-name">String</span> msg<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+        <span class="token keyword">super</span><span class="token punctuation">(</span>msg<span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token punctuation">}</span>
+<span class="token punctuation">}</span></code></pre></div></div>
+<p><strong>파일명:</strong> <code>core/handler/errors/NotFoundException.java</code></p>
+<div class="code-wrap" data-kind="code" data-lang="java"><div class="code-label"><span class="code-label__name">Java</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1
+2
+3
+4
+5
+6
+7
+8</div><pre><code class="language-java" data-code="package com.newtenco.blog.core.handler.errors;
+
+// 404: 자원 없음 (예: 없는 게시글)
+public class NotFoundException extends RuntimeException {
+    public NotFoundException(String msg) {
+        super(msg);
+    }
+}"><span class="token keyword">package</span> <span class="token namespace">com<span class="token punctuation">.</span>newtenco<span class="token punctuation">.</span>blog<span class="token punctuation">.</span>core<span class="token punctuation">.</span>handler<span class="token punctuation">.</span>errors</span><span class="token punctuation">;</span>
+
+<span class="token comment">// 404: 자원 없음 (예: 없는 게시글)</span>
+<span class="token keyword">public</span> <span class="token keyword">class</span> <span class="token class-name">NotFoundException</span> <span class="token keyword">extends</span> <span class="token class-name">RuntimeException</span> <span class="token punctuation">{</span>
+    <span class="token keyword">public</span> <span class="token class-name">NotFoundException</span><span class="token punctuation">(</span><span class="token class-name">String</span> msg<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+        <span class="token keyword">super</span><span class="token punctuation">(</span>msg<span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token punctuation">}</span>
+<span class="token punctuation">}</span></code></pre></div></div>
+<p>생성자로 받은 <code>msg</code>는 <code>super(msg)</code>로 부모 클래스에 넘깁니다. 이렇게 넘긴 메시지는 <code>getMessage()</code>로 다시 꺼낼 수 있고, 처리기는 이 메시지를 그대로 응답의 <code>msg</code>에 넣습니다. 그래서 예외를 던질 때 쓰는 메시지는 사용자가 읽을 문장으로 씁니다.</p>
+<p><strong>코드 조각</strong></p>
+<div class="code-wrap" data-kind="code" data-lang="java"><div class="code-label"><span class="code-label__name">Java</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1
+2</div><pre><code class="language-java" data-code="Board board = boardRepository.findById(id)
+        .orElseThrow(() -&gt; new NotFoundException(&quot;게시글을 찾을 수 없습니다&quot;));"><span class="token class-name">Board</span> board <span class="token operator">=</span> boardRepository<span class="token punctuation">.</span><span class="token function">findById</span><span class="token punctuation">(</span>id<span class="token punctuation">)</span>
+        <span class="token punctuation">.</span><span class="token function">orElseThrow</span><span class="token punctuation">(</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token operator">-></span> <span class="token keyword">new</span> <span class="token class-name">NotFoundException</span><span class="token punctuation">(</span><span class="token string">"게시글을 찾을 수 없습니다"</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span></code></pre></div></div>
+<p>이 코드에서 게시글이 없으면 클라이언트는 404 상태 코드와 함께 <code>{&quot;status&quot;:404,&quot;msg&quot;:&quot;게시글을 찾을 수 없습니다&quot;,&quot;body&quot;:null}</code>을 받습니다. 서비스는 상태 코드나 JSON을 신경 쓰지 않고 &quot;무엇이 왜 실패했는지&quot;만 예외로 알립니다.</p>
+<h4>3.2 RuntimeException을 상속하는 이유</h4>
+<p>네 예외는 모두 <code>Exception</code>이 아니라 <code>RuntimeException</code>을 상속합니다. <code>RuntimeException</code>과 그 하위 클래스는 <strong>언체크 예외(unchecked exception)</strong>라서 컴파일러가 처리를 강제하지 않습니다. 이 성질이 필요한 이유는 두 가지입니다.</p>
+<p>첫째, 메서드 선언에 <code>throws</code>를 쓰지 않아도 됩니다. 체크 예외였다면 예외를 던지는 서비스 메서드에 <code>throws</code>를 붙여야 합니다. 그 서비스를 부르는 컨트롤러 메서드도 <code>try-catch</code>로 잡거나 <code>throws</code>를 붙여야 합니다. 예외는 어차피 처리기가 받으므로, 중간 계층의 메서드 선언을 고칠 이유가 없습니다.</p>
+<p>둘째, 트랜잭션이 롤백됩니다. <code>@Transactional</code>은 기본 설정에서 언체크 예외가 발생할 때만 롤백하고, 체크 예외가 발생하면 커밋합니다. 서비스가 데이터를 일부 바꾼 뒤 <code>ForbiddenException</code>을 던졌다면 바뀐 내용은 취소되어야 합니다. <code>RuntimeException</code>을 상속하면 따로 설정하지 않아도 그렇게 동작합니다.</p>
+<h3>4. GlobalExceptionHandler</h3>
+<h4>4.1 @RestControllerAdvice와 @ExceptionHandler</h4>
+<p>서비스가 던진 예외는 컨트롤러를 거쳐 밖으로 나갑니다. 아무도 잡지 않으면 스프링은 500 상태 코드와 기본 오류 응답을 보냅니다. 이런 예외를 컨트롤러마다 <code>try-catch</code>로 잡지 않고 한 클래스에 모아 처리하는 것이 <strong>전역 예외 처리기</strong>입니다.</p>
+<table><thead><tr><th>어노테이션</th><th>붙이는 곳</th><th>역할</th></tr></thead><tbody><tr><td><code>@RestControllerAdvice</code></td><td>클래스</td><td>모든 컨트롤러에서 발생한 예외를 이 클래스가 받습니다. <code>@ControllerAdvice</code>와 <code>@ResponseBody</code>를 합친 것이라 반환값이 JSON 본문이 됩니다</td></tr><tr><td><code>@ExceptionHandler(예외.class)</code></td><td>메서드</td><td>지정한 예외와 그 하위 예외가 발생하면 이 메서드가 실행됩니다</td></tr></tbody></table>
+<figure class="book-figure" data-type="generated" id="figure-2ddf3c4156c2"><div class="figure-scroll"><img src="../assets/img/9d1480af74919c5a.png" alt="예외가 공통 응답이 되는 길" data-raster="true"/></div><figcaption>예외가 공통 응답이 되는 길</figcaption></figure>
+<p>그림 4-1처럼 서비스는 예외를 던지기만 하고, 처리기는 예외 종류에 맞는 <code>@ExceptionHandler</code> 메서드에서 <code>Resp.fail()</code>로 응답을 만듭니다. 예외 하나에 맞는 메서드가 여러 개면 스프링은 상속 관계에서 가장 가까운 예외를 지정한 메서드를 고릅니다. 예를 들어 <code>NotFoundException</code>이 발생하면 <code>Exception.class</code> 메서드도 조건에 맞지만, 더 가까운 <code>NotFoundException.class</code> 메서드가 실행됩니다.</p>
+<p><strong>예제 4-3 — 전역 예외 처리기 만들기</strong></p>
+<p><strong>이어서:</strong> 예제 4-2</p>
+<p><strong>파일명:</strong> <code>core/handler/GlobalExceptionHandler.java</code></p>
+<div class="code-wrap" data-kind="code" data-lang="java"><div class="code-label"><span class="code-label__name">Java</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45
+46
+47
+48
+49
+50
+51
+52
+53
+54
+55
+56
+57
+58
+59
+60
+61
+62
+63
+64
+65
+66
+67
+68
+69
+70
+71
+72
+73
+74
+75
+76</div><pre><code class="language-java" data-code="package com.newtenco.blog.core.handler;
+
+import com.newtenco.blog.core.handler.errors.BadRequestException;
+import com.newtenco.blog.core.handler.errors.ForbiddenException;
+import com.newtenco.blog.core.handler.errors.NotFoundException;
+import com.newtenco.blog.core.handler.errors.UnauthorizedException;
+import com.newtenco.blog.core.util.Resp;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.validation.FieldError;
+import org.springframework.web.ErrorResponse;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+/**
+ * 컨트롤러/서비스에서 던진 예외를 한곳에서 잡아 Resp 모양으로 응답한다.
+ */
+@Slf4j
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+    // @Valid 검증 실패 -&gt; 400
+    // 컨트롤러마다 if (errors.hasErrors()) 를 쓰지 않아도 여기서 한 번에 처리된다.
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity&lt;?&gt; validation(MethodArgumentNotValidException e) {
+        FieldError fe = e.getBindingResult().getFieldErrors().getFirst();
+        String msg = fe.getField() + &quot;:&quot; + fe.getDefaultMessage();
+        log.warn(&quot;[400] 유효성 검사 실패 - {}&quot;, msg);
+        return Resp.fail(HttpStatus.BAD_REQUEST, msg);
+    }
+
+    // 필수 쿼리스트링(?username=) 누락 -&gt; 400
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity&lt;?&gt; missingParam(MissingServletRequestParameterException e) {
+        return Resp.fail(HttpStatus.BAD_REQUEST, e.getParameterName() + &quot;:값을 입력해주세요&quot;);
+    }
+
+    @ExceptionHandler(BadRequestException.class)
+    public ResponseEntity&lt;?&gt; ex400(BadRequestException e) {
+        log.warn(&quot;[400] {}&quot;, e.getMessage());
+        return Resp.fail(HttpStatus.BAD_REQUEST, e.getMessage());
+    }
+
+    @ExceptionHandler(UnauthorizedException.class)
+    public ResponseEntity&lt;?&gt; ex401(UnauthorizedException e) {
+        log.warn(&quot;[401] {}&quot;, e.getMessage());
+        return Resp.fail(HttpStatus.UNAUTHORIZED, e.getMessage());
+    }
+
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity&lt;?&gt; ex403(ForbiddenException e) {
+        log.warn(&quot;[403] {}&quot;, e.getMessage());
+        return Resp.fail(HttpStatus.FORBIDDEN, e.getMessage());
+    }
+
+    @ExceptionHandler(NotFoundException.class)
+    public ResponseEntity&lt;?&gt; ex404(NotFoundException e) {
+        log.warn(&quot;[404] {}&quot;, e.getMessage());
+        return Resp.fail(HttpStatus.NOT_FOUND, e.getMessage());
+    }
+
+    // 예상하지 못한 모든 예외 -&gt; 500 (내부 메시지는 숨긴다)
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity&lt;?&gt; exUnknown(Exception e) {
+        // 없는 주소(404), 허용하지 않는 메서드(405) 같은 스프링 MVC 예외는 원래 상태 코드를 유지한다
+        if (e instanceof ErrorResponse er) {
+            HttpStatus status = HttpStatus.valueOf(er.getStatusCode().value());
+            return Resp.fail(status, status.getReasonPhrase());
+        }
+        log.error(&quot;[500] 예상하지 못한 오류&quot;, e);
+        return Resp.fail(HttpStatus.INTERNAL_SERVER_ERROR, &quot;관리자에게 문의하세요&quot;);
+    }
+}"><span class="token keyword">package</span> <span class="token namespace">com<span class="token punctuation">.</span>newtenco<span class="token punctuation">.</span>blog<span class="token punctuation">.</span>core<span class="token punctuation">.</span>handler</span><span class="token punctuation">;</span>
+
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">com<span class="token punctuation">.</span>newtenco<span class="token punctuation">.</span>blog<span class="token punctuation">.</span>core<span class="token punctuation">.</span>handler<span class="token punctuation">.</span>errors<span class="token punctuation">.</span></span><span class="token class-name">BadRequestException</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">com<span class="token punctuation">.</span>newtenco<span class="token punctuation">.</span>blog<span class="token punctuation">.</span>core<span class="token punctuation">.</span>handler<span class="token punctuation">.</span>errors<span class="token punctuation">.</span></span><span class="token class-name">ForbiddenException</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">com<span class="token punctuation">.</span>newtenco<span class="token punctuation">.</span>blog<span class="token punctuation">.</span>core<span class="token punctuation">.</span>handler<span class="token punctuation">.</span>errors<span class="token punctuation">.</span></span><span class="token class-name">NotFoundException</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">com<span class="token punctuation">.</span>newtenco<span class="token punctuation">.</span>blog<span class="token punctuation">.</span>core<span class="token punctuation">.</span>handler<span class="token punctuation">.</span>errors<span class="token punctuation">.</span></span><span class="token class-name">UnauthorizedException</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">com<span class="token punctuation">.</span>newtenco<span class="token punctuation">.</span>blog<span class="token punctuation">.</span>core<span class="token punctuation">.</span>util<span class="token punctuation">.</span></span><span class="token class-name">Resp</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">lombok<span class="token punctuation">.</span>extern<span class="token punctuation">.</span>slf4j<span class="token punctuation">.</span></span><span class="token class-name">Slf4j</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">org<span class="token punctuation">.</span>springframework<span class="token punctuation">.</span>http<span class="token punctuation">.</span></span><span class="token class-name">HttpStatus</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">org<span class="token punctuation">.</span>springframework<span class="token punctuation">.</span>http<span class="token punctuation">.</span></span><span class="token class-name">ResponseEntity</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">org<span class="token punctuation">.</span>springframework<span class="token punctuation">.</span>validation<span class="token punctuation">.</span></span><span class="token class-name">FieldError</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">org<span class="token punctuation">.</span>springframework<span class="token punctuation">.</span>web<span class="token punctuation">.</span></span><span class="token class-name">ErrorResponse</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">org<span class="token punctuation">.</span>springframework<span class="token punctuation">.</span>web<span class="token punctuation">.</span>bind<span class="token punctuation">.</span></span><span class="token class-name">MethodArgumentNotValidException</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">org<span class="token punctuation">.</span>springframework<span class="token punctuation">.</span>web<span class="token punctuation">.</span>bind<span class="token punctuation">.</span></span><span class="token class-name">MissingServletRequestParameterException</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">org<span class="token punctuation">.</span>springframework<span class="token punctuation">.</span>web<span class="token punctuation">.</span>bind<span class="token punctuation">.</span>annotation<span class="token punctuation">.</span></span><span class="token class-name">ExceptionHandler</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">org<span class="token punctuation">.</span>springframework<span class="token punctuation">.</span>web<span class="token punctuation">.</span>bind<span class="token punctuation">.</span>annotation<span class="token punctuation">.</span></span><span class="token class-name">RestControllerAdvice</span></span><span class="token punctuation">;</span>
+
+<span class="token comment">/**
+ * 컨트롤러/서비스에서 던진 예외를 한곳에서 잡아 Resp 모양으로 응답한다.
+ */</span>
+<span class="token annotation punctuation">@Slf4j</span>
+<span class="token annotation punctuation">@RestControllerAdvice</span>
+<span class="token keyword">public</span> <span class="token keyword">class</span> <span class="token class-name">GlobalExceptionHandler</span> <span class="token punctuation">{</span>
+
+    <span class="token comment">// @Valid 검증 실패 -> 400</span>
+    <span class="token comment">// 컨트롤러마다 if (errors.hasErrors()) 를 쓰지 않아도 여기서 한 번에 처리된다.</span>
+    <span class="token annotation punctuation">@ExceptionHandler</span><span class="token punctuation">(</span><span class="token class-name">MethodArgumentNotValidException</span><span class="token punctuation">.</span><span class="token keyword">class</span><span class="token punctuation">)</span>
+    <span class="token keyword">public</span> <span class="token class-name">ResponseEntity</span><span class="token generics"><span class="token punctuation">&lt;</span><span class="token operator">?</span><span class="token punctuation">></span></span> <span class="token function">validation</span><span class="token punctuation">(</span><span class="token class-name">MethodArgumentNotValidException</span> e<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+        <span class="token class-name">FieldError</span> fe <span class="token operator">=</span> e<span class="token punctuation">.</span><span class="token function">getBindingResult</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">getFieldErrors</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">getFirst</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+        <span class="token class-name">String</span> msg <span class="token operator">=</span> fe<span class="token punctuation">.</span><span class="token function">getField</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token operator">+</span> <span class="token string">":"</span> <span class="token operator">+</span> fe<span class="token punctuation">.</span><span class="token function">getDefaultMessage</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+        log<span class="token punctuation">.</span><span class="token function">warn</span><span class="token punctuation">(</span><span class="token string">"[400] 유효성 검사 실패 - {}"</span><span class="token punctuation">,</span> msg<span class="token punctuation">)</span><span class="token punctuation">;</span>
+        <span class="token keyword">return</span> <span class="token class-name">Resp</span><span class="token punctuation">.</span><span class="token function">fail</span><span class="token punctuation">(</span><span class="token class-name">HttpStatus</span><span class="token punctuation">.</span><span class="token constant">BAD_REQUEST</span><span class="token punctuation">,</span> msg<span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token punctuation">}</span>
+
+    <span class="token comment">// 필수 쿼리스트링(?username=) 누락 -> 400</span>
+    <span class="token annotation punctuation">@ExceptionHandler</span><span class="token punctuation">(</span><span class="token class-name">MissingServletRequestParameterException</span><span class="token punctuation">.</span><span class="token keyword">class</span><span class="token punctuation">)</span>
+    <span class="token keyword">public</span> <span class="token class-name">ResponseEntity</span><span class="token generics"><span class="token punctuation">&lt;</span><span class="token operator">?</span><span class="token punctuation">></span></span> <span class="token function">missingParam</span><span class="token punctuation">(</span><span class="token class-name">MissingServletRequestParameterException</span> e<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+        <span class="token keyword">return</span> <span class="token class-name">Resp</span><span class="token punctuation">.</span><span class="token function">fail</span><span class="token punctuation">(</span><span class="token class-name">HttpStatus</span><span class="token punctuation">.</span><span class="token constant">BAD_REQUEST</span><span class="token punctuation">,</span> e<span class="token punctuation">.</span><span class="token function">getParameterName</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token operator">+</span> <span class="token string">":값을 입력해주세요"</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token punctuation">}</span>
+
+    <span class="token annotation punctuation">@ExceptionHandler</span><span class="token punctuation">(</span><span class="token class-name">BadRequestException</span><span class="token punctuation">.</span><span class="token keyword">class</span><span class="token punctuation">)</span>
+    <span class="token keyword">public</span> <span class="token class-name">ResponseEntity</span><span class="token generics"><span class="token punctuation">&lt;</span><span class="token operator">?</span><span class="token punctuation">></span></span> <span class="token function">ex400</span><span class="token punctuation">(</span><span class="token class-name">BadRequestException</span> e<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+        log<span class="token punctuation">.</span><span class="token function">warn</span><span class="token punctuation">(</span><span class="token string">"[400] {}"</span><span class="token punctuation">,</span> e<span class="token punctuation">.</span><span class="token function">getMessage</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+        <span class="token keyword">return</span> <span class="token class-name">Resp</span><span class="token punctuation">.</span><span class="token function">fail</span><span class="token punctuation">(</span><span class="token class-name">HttpStatus</span><span class="token punctuation">.</span><span class="token constant">BAD_REQUEST</span><span class="token punctuation">,</span> e<span class="token punctuation">.</span><span class="token function">getMessage</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token punctuation">}</span>
+
+    <span class="token annotation punctuation">@ExceptionHandler</span><span class="token punctuation">(</span><span class="token class-name">UnauthorizedException</span><span class="token punctuation">.</span><span class="token keyword">class</span><span class="token punctuation">)</span>
+    <span class="token keyword">public</span> <span class="token class-name">ResponseEntity</span><span class="token generics"><span class="token punctuation">&lt;</span><span class="token operator">?</span><span class="token punctuation">></span></span> <span class="token function">ex401</span><span class="token punctuation">(</span><span class="token class-name">UnauthorizedException</span> e<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+        log<span class="token punctuation">.</span><span class="token function">warn</span><span class="token punctuation">(</span><span class="token string">"[401] {}"</span><span class="token punctuation">,</span> e<span class="token punctuation">.</span><span class="token function">getMessage</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+        <span class="token keyword">return</span> <span class="token class-name">Resp</span><span class="token punctuation">.</span><span class="token function">fail</span><span class="token punctuation">(</span><span class="token class-name">HttpStatus</span><span class="token punctuation">.</span><span class="token constant">UNAUTHORIZED</span><span class="token punctuation">,</span> e<span class="token punctuation">.</span><span class="token function">getMessage</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token punctuation">}</span>
+
+    <span class="token annotation punctuation">@ExceptionHandler</span><span class="token punctuation">(</span><span class="token class-name">ForbiddenException</span><span class="token punctuation">.</span><span class="token keyword">class</span><span class="token punctuation">)</span>
+    <span class="token keyword">public</span> <span class="token class-name">ResponseEntity</span><span class="token generics"><span class="token punctuation">&lt;</span><span class="token operator">?</span><span class="token punctuation">></span></span> <span class="token function">ex403</span><span class="token punctuation">(</span><span class="token class-name">ForbiddenException</span> e<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+        log<span class="token punctuation">.</span><span class="token function">warn</span><span class="token punctuation">(</span><span class="token string">"[403] {}"</span><span class="token punctuation">,</span> e<span class="token punctuation">.</span><span class="token function">getMessage</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+        <span class="token keyword">return</span> <span class="token class-name">Resp</span><span class="token punctuation">.</span><span class="token function">fail</span><span class="token punctuation">(</span><span class="token class-name">HttpStatus</span><span class="token punctuation">.</span><span class="token constant">FORBIDDEN</span><span class="token punctuation">,</span> e<span class="token punctuation">.</span><span class="token function">getMessage</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token punctuation">}</span>
+
+    <span class="token annotation punctuation">@ExceptionHandler</span><span class="token punctuation">(</span><span class="token class-name">NotFoundException</span><span class="token punctuation">.</span><span class="token keyword">class</span><span class="token punctuation">)</span>
+    <span class="token keyword">public</span> <span class="token class-name">ResponseEntity</span><span class="token generics"><span class="token punctuation">&lt;</span><span class="token operator">?</span><span class="token punctuation">></span></span> <span class="token function">ex404</span><span class="token punctuation">(</span><span class="token class-name">NotFoundException</span> e<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+        log<span class="token punctuation">.</span><span class="token function">warn</span><span class="token punctuation">(</span><span class="token string">"[404] {}"</span><span class="token punctuation">,</span> e<span class="token punctuation">.</span><span class="token function">getMessage</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+        <span class="token keyword">return</span> <span class="token class-name">Resp</span><span class="token punctuation">.</span><span class="token function">fail</span><span class="token punctuation">(</span><span class="token class-name">HttpStatus</span><span class="token punctuation">.</span><span class="token constant">NOT_FOUND</span><span class="token punctuation">,</span> e<span class="token punctuation">.</span><span class="token function">getMessage</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token punctuation">}</span>
+
+    <span class="token comment">// 예상하지 못한 모든 예외 -> 500 (내부 메시지는 숨긴다)</span>
+    <span class="token annotation punctuation">@ExceptionHandler</span><span class="token punctuation">(</span><span class="token class-name">Exception</span><span class="token punctuation">.</span><span class="token keyword">class</span><span class="token punctuation">)</span>
+    <span class="token keyword">public</span> <span class="token class-name">ResponseEntity</span><span class="token generics"><span class="token punctuation">&lt;</span><span class="token operator">?</span><span class="token punctuation">></span></span> <span class="token function">exUnknown</span><span class="token punctuation">(</span><span class="token class-name">Exception</span> e<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+        <span class="token comment">// 없는 주소(404), 허용하지 않는 메서드(405) 같은 스프링 MVC 예외는 원래 상태 코드를 유지한다</span>
+        <span class="token keyword">if</span> <span class="token punctuation">(</span>e <span class="token keyword">instanceof</span> <span class="token class-name">ErrorResponse</span> er<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+            <span class="token class-name">HttpStatus</span> status <span class="token operator">=</span> <span class="token class-name">HttpStatus</span><span class="token punctuation">.</span><span class="token function">valueOf</span><span class="token punctuation">(</span>er<span class="token punctuation">.</span><span class="token function">getStatusCode</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">value</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+            <span class="token keyword">return</span> <span class="token class-name">Resp</span><span class="token punctuation">.</span><span class="token function">fail</span><span class="token punctuation">(</span>status<span class="token punctuation">,</span> status<span class="token punctuation">.</span><span class="token function">getReasonPhrase</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+        <span class="token punctuation">}</span>
+        log<span class="token punctuation">.</span><span class="token function">error</span><span class="token punctuation">(</span><span class="token string">"[500] 예상하지 못한 오류"</span><span class="token punctuation">,</span> e<span class="token punctuation">)</span><span class="token punctuation">;</span>
+        <span class="token keyword">return</span> <span class="token class-name">Resp</span><span class="token punctuation">.</span><span class="token function">fail</span><span class="token punctuation">(</span><span class="token class-name">HttpStatus</span><span class="token punctuation">.</span><span class="token constant">INTERNAL_SERVER_ERROR</span><span class="token punctuation">,</span> <span class="token string">"관리자에게 문의하세요"</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token punctuation">}</span>
+<span class="token punctuation">}</span></code></pre></div></div>
+<p><strong>실행 결과</strong></p>
+<p>서버를 실행하면 콘솔에 오류 없이 <code>Started</code>로 시작하는 줄이 출력됩니다.</p>
+<p>아직 컨트롤러가 없고, 시큐리티의 기본 설정이 모든 요청을 로그인 화면으로 보냅니다. 그래서 지금은 처리기가 만든 응답을 직접 볼 수 없습니다. 404 응답은 6장에서, 400 · 401 응답은 7장에서 Talend API Tester로 확인합니다.</p>
+<p><code>ex400()</code>부터 <code>ex404()</code>까지 네 메서드는 3절에서 만든 예외를 받아 상태 코드만 바꿔 <code>Resp.fail()</code>을 부릅니다. 응답하기 전에는 <code>log.warn()</code>으로 기록을 남깁니다. 클라이언트가 잘못 요청한 경우는 서버 고장이 아니므로 <code>warn</code> 수준으로 기록합니다.</p>
+<p>이 처리기는 컨트롤러를 실행하는 과정에서 발생한 예외만 받습니다. 요청이 컨트롤러에 닿기 전에 시큐리티 필터가 막은 경우는 이 처리기를 거치지 않습니다. 필터 단계에서 401 · 403을 공통 응답 모양으로 보내는 방법은 6장에서 따로 만듭니다.</p>
+<h4>4.2 @Valid 검증 실패 처리</h4>
+<p>SSR 프로젝트에서는 컨트롤러 매개변수에 <code>@Valid</code>를 붙이고, 바로 뒤에 <code>Errors</code>를 받아 검증 결과를 직접 검사했습니다.</p>
+<p><strong>코드 조각</strong></p>
+<div class="code-wrap" data-kind="code" data-lang="java"><div class="code-label"><span class="code-label__name">Java</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1
+2
+3
+4
+5
+6
+7</div><pre><code class="language-java" data-code="@PostMapping(&quot;/join&quot;)
+public String join(@Valid UserRequest.JoinDTO reqDTO, Errors errors) {
+    if (errors.hasErrors()) {
+        // 오류 메시지를 꺼내 화면으로 돌려보낸다
+    }
+    // ...
+}"><span class="token annotation punctuation">@PostMapping</span><span class="token punctuation">(</span><span class="token string">"/join"</span><span class="token punctuation">)</span>
+<span class="token keyword">public</span> <span class="token class-name">String</span> <span class="token function">join</span><span class="token punctuation">(</span><span class="token annotation punctuation">@Valid</span> <span class="token class-name">UserRequest<span class="token punctuation">.</span>JoinDTO</span> reqDTO<span class="token punctuation">,</span> <span class="token class-name">Errors</span> errors<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+    <span class="token keyword">if</span> <span class="token punctuation">(</span>errors<span class="token punctuation">.</span><span class="token function">hasErrors</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+        <span class="token comment">// 오류 메시지를 꺼내 화면으로 돌려보낸다</span>
+    <span class="token punctuation">}</span>
+    <span class="token comment">// ...</span>
+<span class="token punctuation">}</span></code></pre></div></div>
+<p>이 방식으로는 검증이 필요한 컨트롤러 메서드마다 같은 <code>if</code> 문을 반복해야 합니다. REST API에서는 <code>Errors</code> 매개변수를 쓰지 않습니다. 검증 결과를 받을 <code>Errors</code>나 <code>BindingResult</code> 매개변수가 없으면, 스프링은 검증에 실패했을 때 <code>MethodArgumentNotValidException</code>을 던집니다. 이 예외는 처리기의 <code>validation()</code> 메서드가 받습니다.</p>
+<p><strong>코드 조각</strong></p>
+<div class="code-wrap" data-kind="code" data-lang="java"><div class="code-label"><span class="code-label__name">Java</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1
+2
+3
+4</div><pre><code class="language-java" data-code="@PostMapping(&quot;/join&quot;)
+public ResponseEntity&lt;?&gt; join(@Valid @RequestBody AuthRequest.JoinDTO reqDTO) {
+    // 검증을 통과한 경우에만 여기까지 온다
+}"><span class="token annotation punctuation">@PostMapping</span><span class="token punctuation">(</span><span class="token string">"/join"</span><span class="token punctuation">)</span>
+<span class="token keyword">public</span> <span class="token class-name">ResponseEntity</span><span class="token generics"><span class="token punctuation">&lt;</span><span class="token operator">?</span><span class="token punctuation">></span></span> <span class="token function">join</span><span class="token punctuation">(</span><span class="token annotation punctuation">@Valid</span> <span class="token annotation punctuation">@RequestBody</span> <span class="token class-name">AuthRequest<span class="token punctuation">.</span>JoinDTO</span> reqDTO<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+    <span class="token comment">// 검증을 통과한 경우에만 여기까지 온다</span>
+<span class="token punctuation">}</span></code></pre></div></div>
+<p>검증 실패는 다음 순서로 처리됩니다.</p>
+<ol>
+<li>클라이언트가 JSON 본문을 보냅니다.</li>
+<li>스프링이 JSON을 DTO 객체로 바꿉니다.</li>
+<li><code>@Valid</code>가 DTO 필드에 붙은 <code>@NotBlank</code> · <code>@Size</code> · <code>@Email</code> 같은 검증 어노테이션을 검사합니다.</li>
+<li>하나라도 실패하면 컨트롤러 메서드를 실행하지 않고 <code>MethodArgumentNotValidException</code>이 발생합니다.</li>
+<li><code>validation()</code> 메서드가 예외를 받아 400으로 응답합니다.</li>
+</ol>
+<p>4번이 중요합니다. 검증은 컨트롤러 메서드가 실행되기 전에 끝나므로, 검증에 실패한 값은 서비스와 DB까지 가지 않습니다.</p>
+<p><code>validation()</code>은 예외에 담긴 필드 오류 가운데 첫 번째를 꺼내 <code>필드명:메시지</code> 형태로 <code>msg</code>를 만듭니다. <code>username</code>에 <code>@NotBlank(message = &quot;유저네임을 입력해주세요&quot;)</code>가 붙어 있는데 빈 값이 왔다면 응답은 다음과 같습니다.</p>
+<p><strong>코드 조각</strong></p>
+<div class="code-wrap" data-kind="code" data-lang="json"><div class="code-label"><span class="code-label__name">JSON</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1</div><pre><code class="language-json" data-code="{&quot;status&quot;:400,&quot;msg&quot;:&quot;username:유저네임을 입력해주세요&quot;,&quot;body&quot;:null}"><span class="token punctuation">{</span><span class="token property">"status"</span><span class="token operator">:</span><span class="token number">400</span><span class="token punctuation">,</span><span class="token property">"msg"</span><span class="token operator">:</span><span class="token string">"username:유저네임을 입력해주세요"</span><span class="token punctuation">,</span><span class="token property">"body"</span><span class="token operator">:</span><span class="token null keyword">null</span><span class="token punctuation">}</span></code></pre></div></div>
+<p>메시지 앞에 필드 이름이 붙어 있으므로, 프런트엔드는 어느 입력칸 아래에 메시지를 보여 줄지 알 수 있습니다. 여러 필드가 한꺼번에 틀려도 응답에는 그중 하나만 담깁니다. 어느 필드가 첫 번째가 될지는 정해져 있지 않으므로, 메시지 순서에 기대는 코드는 짜지 않습니다. <code>getFirst()</code>는 자바 21부터 <code>List</code>에서 쓸 수 있는 메서드입니다.</p>
+<p>쿼리스트링 값이 아예 빠진 경우에는 <code>@Valid</code>와 다른 예외가 발생합니다. 7장의 중복체크 API처럼 <code>@RequestParam</code>으로 받는 필수 값이 없으면 <code>MissingServletRequestParameterException</code>이 발생합니다. <code>missingParam()</code>은 이 예외를 받아 <code>username:값을 입력해주세요</code>처럼 같은 <code>필드명:메시지</code> 형태로 응답합니다.</p>
+<h4>4.3 예상하지 못한 예외와 500 응답</h4>
+<p>아무리 조심해도 코드에는 예상하지 못한 예외가 생깁니다. <code>NullPointerException</code>이나 DB 오류처럼 개발자가 직접 던지지 않은 예외는 마지막 메서드 <code>exUnknown()</code>이 받습니다. <code>Exception.class</code>는 모든 예외의 부모이므로, 다른 메서드가 받지 않은 예외는 모두 이 메서드로 옵니다.</p>
+<p><code>exUnknown()</code>은 실제 오류 메시지를 응답에 넣지 않고 &quot;관리자에게 문의하세요&quot;라는 고정 문장만 보냅니다. 예외 메시지에는 테이블 이름, SQL, 클래스 경로 같은 서버 내부 정보가 들어 있을 수 있습니다. 이 정보가 응답으로 나가면 공격자에게 서버 구조를 알려 주게 됩니다. 실제 원인은 <code>log.error(&quot;[500] 예상하지 못한 오류&quot;, e)</code>로 서버 로그에 남깁니다. 마지막 인자로 예외 객체를 넘기면 스택 트레이스까지 함께 기록되므로, 개발자는 로그를 보고 어느 줄에서 문제가 생겼는지 찾을 수 있습니다. 서버가 고장 난 상황이므로 <code>warn</code>이 아닌 <code>error</code> 수준으로 기록합니다.</p>
+<p><code>exUnknown()</code> 안의 <code>if</code> 문은 스프링 MVC가 스스로 던지는 예외를 위한 것입니다. 없는 주소로 요청하면 <code>NoResourceFoundException</code>이, GET만 받는 주소에 POST로 요청하면 <code>HttpRequestMethodNotSupportedException</code>이 발생합니다. 이런 예외도 <code>Exception</code>의 하위 클래스라서 <code>exUnknown()</code>으로 옵니다. 그대로 두면 클라이언트가 잘못 요청했는데도 모두 500 &quot;관리자에게 문의하세요&quot;로 응답합니다.</p>
+<p>두 예외는 <code>ErrorResponse</code> 인터페이스를 구현합니다. 이 인터페이스의 <code>getStatusCode()</code>가 원래 상태 코드를 알려 줍니다. 그래서 <code>ErrorResponse</code>인 예외는 원래 상태 코드를 그대로 쓰고, <code>msg</code>에는 상태 코드의 표준 이름(<code>getReasonPhrase()</code>)을 넣습니다. 없는 주소는 404 &quot;Not Found&quot;, 허용하지 않는 메서드는 405 &quot;Method Not Allowed&quot;로 응답합니다.</p>
+<h4>4.4 예외별 응답 정리</h4>
+<p>어떤 상황에서 어떤 예외가 발생하고, 처리기가 그 예외를 어떤 응답으로 바꾸는지 정리하면 다음과 같습니다.</p>
+<table><thead><tr><th>발생 상황</th><th>예외</th><th>처리 메서드</th><th>응답 상태 코드와 msg</th></tr></thead><tbody><tr><td><code>@Valid</code> 검증 실패</td><td><code>MethodArgumentNotValidException</code></td><td><code>validation()</code></td><td>400, <code>필드명:메시지</code></td></tr><tr><td>필수 쿼리스트링 누락</td><td><code>MissingServletRequestParameterException</code></td><td><code>missingParam()</code></td><td>400, <code>username:값을 입력해주세요</code></td></tr><tr><td>서비스에서 직접 던진 예외</td><td><code>BadRequestException</code></td><td><code>ex400()</code></td><td>400, 던질 때 쓴 메시지</td></tr><tr><td></td><td><code>UnauthorizedException</code></td><td><code>ex401()</code></td><td>401, 던질 때 쓴 메시지</td></tr><tr><td></td><td><code>ForbiddenException</code></td><td><code>ex403()</code></td><td>403, 던질 때 쓴 메시지</td></tr><tr><td></td><td><code>NotFoundException</code></td><td><code>ex404()</code></td><td>404, 던질 때 쓴 메시지</td></tr><tr><td>없는 주소 요청</td><td><code>NoResourceFoundException</code></td><td><code>exUnknown()</code></td><td>404, <code>Not Found</code></td></tr><tr><td>허용하지 않는 메서드로 요청</td><td><code>HttpRequestMethodNotSupportedException</code></td><td><code>exUnknown()</code></td><td>405, <code>Method Not Allowed</code></td></tr><tr><td>그 밖의 모든 예외</td><td><code>Exception</code></td><td><code>exUnknown()</code></td><td>500, <code>관리자에게 문의하세요</code></td></tr></tbody></table>
+<p>어느 경우든 응답 본문은 <code>{&quot;status&quot;:...,&quot;msg&quot;:...,&quot;body&quot;:null}</code> 모양입니다. 성공 응답은 컨트롤러가 <code>Resp.ok()</code>로, 실패 응답은 처리기가 <code>Resp.fail()</code>로 만듭니다. 그래서 클라이언트는 어떤 API를 부르든 같은 방법으로 응답을 읽습니다.</p>
+<p>이 표에 없는 잘못된 요청도 있습니다. 숫자 자리에 문자가 들어온 주소나 문법이 틀린 JSON 본문에는 지금 처리기가 500으로 응답합니다. 이런 예외는 회원 정보 API를 만드는 9장에서 처리기에 추가합니다.</p><nav class="chapter-nav"><button type="button" class="text" data-prev="true" data-href="03.html">← 이전 장</button><span>4 / 13</span><button type="button" class="text" data-next="true" data-href="05.html">다음 장 →</button></nav></section></main></div><script src="../assets/book-6d8228e561daa8ba.js"></script></body></html>

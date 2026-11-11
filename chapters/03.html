@@ -1,0 +1,589 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data: blob:; font-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'"><meta name="viewport" content="width=device-width,initial-scale=1"><title>REST API 서버 구축</title><link rel="stylesheet" href="../assets/book-d4f8cb83afec858a.css"></head><body><div class="reader" data-toc="open"><header class="book-bar"><button type="button" class="toc-toggle" aria-expanded="true" aria-controls="toc">목차</button><span class="book-bar__title">REST API 서버 구축</span></header><aside class="toc" id="toc"><p class="caption">목차 / CONTENTS</p><div class="toc-title">REST API 서버 구축</div><a href="../index.html" data-chapter="0" title="표지" aria-current="false">표지</a><a href="01.html" data-chapter="1" title="1장. REST API 프로젝트 준비" aria-current="false">1장. REST API 프로젝트 준비</a><a href="02.html" data-chapter="2" title="2장. 엔티티와 더미 데이터" aria-current="false">2장. 엔티티와 더미 데이터</a><a href="03.html" data-chapter="3" title="3장. JWT란?" aria-current="true">3장. JWT란?</a><a href="04.html" data-chapter="4" title="4장. 공통 응답이란?" aria-current="false">4장. 공통 응답이란?</a><a href="05.html" data-chapter="5" title="5장. 스프링 시큐리티란?" aria-current="false">5장. 스프링 시큐리티란?</a><a href="06.html" data-chapter="6" title="6장. SecurityFilterChain 설정" aria-current="false">6장. SecurityFilterChain 설정</a><a href="07.html" data-chapter="7" title="7장. 회원 API 만들기" aria-current="false">7장. 회원 API 만들기</a><a href="08.html" data-chapter="8" title="8장. JWT 인증 전체 흐름 확인" aria-current="false">8장. JWT 인증 전체 흐름 확인</a><a href="09.html" data-chapter="9" title="9장. 회원 정보 API 만들기" aria-current="false">9장. 회원 정보 API 만들기</a><a href="10.html" data-chapter="10" title="10장. 게시글 조회와 쓰기" aria-current="false">10장. 게시글 조회와 쓰기</a><a href="11.html" data-chapter="11" title="11장. 게시글 수정과 삭제" aria-current="false">11장. 게시글 수정과 삭제</a><a href="12.html" data-chapter="12" title="12장. 댓글 API" aria-current="false">12장. 댓글 API</a><a href="13.html" data-chapter="13" title="13장. 관리자 API" aria-current="false">13장. 관리자 API</a><footer>13장</footer></aside><main class="reading"><section class="chapter" id="chapter-3"><div class="eyebrow">REST API 서버 구축 / CHAPTER 03</div><span class="chapter-num" aria-hidden="true">03</span><h2>3장. JWT란?</h2><h3>1. 세션 방식과 JWT 방식</h3>
+<h4>1.1 Stateful과 Stateless</h4>
+<p>SSR 프로젝트에서 만든 세션 로그인은 서버가 로그인한 사용자를 기억하는 방식입니다. 로그인에 성공하면 서버는 세션 저장소에 사용자 정보를 넣습니다. 브라우저에는 그 정보를 찾을 열쇠인 세션 ID만 쿠키에 담아 보냅니다. 다음 요청에 쿠키로 세션 ID가 오면 서버는 저장소에서 사용자를 찾아냅니다. 이렇게 서버가 클라이언트의 상태를 저장해 두고 요청을 처리하는 방식을 <strong>Stateful(상태 유지)</strong>이라고 합니다.</p>
+<p><strong>JWT(JSON Web Token)</strong>는 로그인한 사용자 정보를 JSON으로 담고, 서버의 비밀키로 서명한 문자열입니다. 서버는 로그인에 성공한 사용자에게 이 토큰을 발급하고 따로 저장하지 않습니다. 클라이언트는 요청할 때마다 토큰을 보냅니다. 서버는 서명을 검사해 자신이 발급한 토큰인지 확인하고, 토큰 안의 정보로 사용자를 알아냅니다. 서버는 아무것도 기억하지 않고 들어온 요청만 보고 처리하므로 이 방식은 <strong>Stateless(무상태)</strong>입니다.</p>
+<figure class="book-figure" data-type="generated" id="figure-a283af8e0125"><div class="figure-scroll"><img src="../assets/img/d81d3fad8e61870a.png" alt="세션 방식과 JWT 방식" data-raster="true"/></div><figcaption>세션 방식과 JWT 방식</figcaption></figure>
+<p>그림 3-1처럼 두 방식은 로그인 정보를 어디에 두느냐가 다릅니다. 이 차이가 확장성과 로그아웃 처리 방식까지 바꿉니다.</p>
+<table><thead><tr><th>구분</th><th>세션 방식</th><th>JWT 방식</th></tr></thead><tbody><tr><td>로그인 정보를 두는 곳</td><td>서버 메모리(세션 저장소)</td><td>클라이언트(토큰)</td></tr><tr><td>서버 상태</td><td>Stateful</td><td>Stateless</td></tr><tr><td>요청마다 보내는 값</td><td>쿠키의 세션 ID</td><td><code>Authorization</code> 헤더의 토큰</td></tr><tr><td>서버를 여러 대로 늘릴 때</td><td>서버끼리 세션을 공유하는 설정 필요</td><td>같은 비밀키로 서명만 검증하면 됨</td></tr><tr><td>강제 로그아웃</td><td>서버에서 세션을 지우면 끝</td><td>발급한 토큰은 만료 전까지 유효</td></tr><tr><td>주로 쓰는 곳</td><td>SSR 웹</td><td>REST API, SPA, 모바일 앱</td></tr></tbody></table>
+<p>세션 방식에서는 서버를 두 대로 늘리면 문제가 생깁니다. 1번 서버에서 로그인한 사용자의 다음 요청이 2번 서버로 가면, 2번 서버의 저장소에는 그 세션이 없습니다. JWT 방식은 토큰에 사용자 정보가 들어 있습니다. 그래서 비밀키를 아는 서버라면 어느 서버든 같은 사용자로 인식합니다. 브라우저가 아닌 모바일 앱도 헤더에 토큰만 넣으면 되므로 REST API 서버와 잘 맞습니다.</p>
+<p>대신 JWT 방식에서는 한 번 발급한 토큰을 서버가 회수할 수 없습니다. 서버가 토큰 목록을 저장하지 않으니 &quot;이 토큰은 이제 무효&quot;라고 표시할 곳도 없습니다. 토큰은 정해 둔 만료 시간이 지나야 쓸 수 없게 됩니다. 이 성질이 실제 API에서 어떤 결과를 낳는지는 9장과 13장에서 직접 확인합니다.</p>
+<h4>1.2 JWT 로그인 흐름</h4>
+<p>이 책의 REST API 서버는 로그인부터 인증이 필요한 요청까지 다음 순서로 동작합니다.</p>
+<figure class="book-figure" data-type="generated" id="figure-9b60ee192543"><div class="figure-scroll"><img src="../assets/img/9102c6f3f25dac8e.png" alt="JWT 로그인 흐름" data-raster="true"/></div><figcaption>JWT 로그인 흐름</figcaption></figure>
+<table><thead><tr><th>순서</th><th>하는 쪽</th><th>하는 일</th><th>만드는 곳</th></tr></thead><tbody><tr><td>1</td><td>클라이언트</td><td><code>POST /login</code>으로 username과 password를 JSON으로 보냅니다</td><td>7장</td></tr><tr><td>2</td><td>서버</td><td>DB의 암호화된 비밀번호와 비교하고, 맞으면 JWT를 만듭니다</td><td>3장(JwtUtil), 7장</td></tr><tr><td>3</td><td>서버</td><td>응답 본문에 <code>Bearer eyJ...</code> 형태의 토큰을 담아 돌려줍니다</td><td>7장</td></tr><tr><td>4</td><td>클라이언트</td><td>토큰을 보관해 두었다가 요청마다 <code>Authorization: Bearer eyJ...</code> 헤더로 보냅니다</td><td>8장</td></tr><tr><td>5</td><td>서버</td><td>필터에서 서명과 만료 시간을 검사하고, 토큰 안의 정보로 사용자를 확인합니다</td><td>5장, 6장</td></tr></tbody></table>
+<p>토큰 앞의 <strong>Bearer</strong>는 &quot;소지자&quot;라는 뜻입니다. <code>Authorization</code> 헤더에 토큰을 담을 때 쓰는 인증 방식 이름으로, 토큰을 가진 사람에게 권한을 준다는 의미입니다. 그래서 토큰을 도둑맞으면 도둑도 같은 권한을 갖게 됩니다. 실제 서비스에서 HTTPS로 통신해야 하는 이유이기도 합니다.</p>
+<p>5번에서 서버는 세션 저장소도 DB도 조회하지 않습니다. 이 토큰 검사는 이 장에서 만들 JwtUtil의 <code>verify()</code>가 맡습니다.</p>
+<h3>2. JWT의 구조</h3>
+<h4>2.1 헤더·페이로드·서명</h4>
+<p>JWT는 점(<code>.</code>)으로 나뉜 세 부분으로 이루어진 문자열입니다.</p>
+<p><strong>기본 문법</strong></p>
+<div class="code-wrap" data-kind="output" data-lang="text"><div class="code-label"><span class="code-label__name">출력</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1</div><pre><code data-code="헤더.페이로드.서명">헤더.페이로드.서명</code></pre></div></div>
+<figure class="book-figure" data-type="generated" id="figure-3770000c1ba8"><div class="figure-scroll"><img src="../assets/img/3a14b8d7cf27bdf4.png" alt="JWT의 세 부분" data-raster="true"/></div><figcaption>JWT의 세 부분</figcaption></figure>
+<table><thead><tr><th>부분</th><th>담는 내용</th><th>이 책의 예</th></tr></thead><tbody><tr><td>헤더(Header)</td><td>서명 알고리즘과 토큰 종류</td><td><code>{&quot;alg&quot;:&quot;HS512&quot;,&quot;typ&quot;:&quot;JWT&quot;}</code></td></tr><tr><td>페이로드(Payload)</td><td>전달할 정보(클레임)</td><td><code>{&quot;sub&quot;:&quot;ssar&quot;,&quot;id&quot;:1,&quot;roles&quot;:[&quot;USER&quot;],&quot;exp&quot;:1763000000}</code></td></tr><tr><td>서명(Signature)</td><td>헤더와 페이로드를 비밀키로 계산한 값</td><td>위조 여부 판단에 사용</td></tr></tbody></table>
+<p>헤더와 페이로드는 JSON을 <strong>Base64Url 인코딩</strong>한 문자열입니다. Base64Url은 데이터를 URL에 넣어도 안전한 글자(영문, 숫자, <code>-</code>, <code>_</code>)만으로 바꾸는 방법입니다. JSON이 <code>{&quot;</code>로 시작하므로 인코딩 결과는 언제나 <code>eyJ</code>로 시작합니다. 앞으로 <code>eyJ...</code>로 시작하는 긴 문자열을 보면 JWT라고 짐작해도 됩니다.</p>
+<p>서명은 헤더와 페이로드를 이어 붙인 문자열을 HS512 알고리즘과 서버의 비밀키로 계산한 값입니다. HS512는 SHA-512 해시에 비밀키를 섞어 계산하는 HMAC 방식입니다. 같은 입력과 같은 비밀키를 넣으면 항상 같은 서명이 나옵니다. 입력이 한 글자만 달라도 완전히 다른 서명이 나옵니다. 서버는 받은 토큰의 헤더와 페이로드로 서명을 다시 계산하고, 그 값이 토큰에 붙은 서명과 같은지 비교합니다.</p>
+<h4>2.2 표준 클레임과 사용자 정의 클레임</h4>
+<p>페이로드에 담는 이름과 값 한 쌍을 <strong>클레임(claim)</strong>이라고 합니다. <code>&quot;sub&quot;:&quot;ssar&quot;</code>가 클레임 하나입니다. JWT 표준(RFC 7519)은 자주 쓰는 클레임의 이름을 미리 정해 두었는데, 이것을 <strong>표준 클레임(registered claim)</strong>이라고 합니다. 토큰을 짧게 유지하려고 이름은 세 글자로 지었습니다.</p>
+<table><thead><tr><th>클레임</th><th>뜻</th><th>이 책에서 넣는 값</th></tr></thead><tbody><tr><td><code>sub</code> (Subject)</td><td>토큰의 주인</td><td>username</td></tr><tr><td><code>exp</code> (Expiration Time)</td><td>만료 시각</td><td>발급 시각 + 1일</td></tr><tr><td><code>iat</code> (Issued At)</td><td>발급 시각</td><td>넣지 않음</td></tr><tr><td><code>iss</code> (Issuer)</td><td>토큰을 발급한 곳</td><td>넣지 않음</td></tr></tbody></table>
+<p><code>exp</code>에는 1970년 1월 1일 0시(UTC)부터 지난 시간이 초 단위로 저장됩니다. 자바의 <code>System.currentTimeMillis()</code>는 밀리초를 씁니다. 하지만 java-jwt가 <code>Date</code>를 받아 초 단위로 바꿔 넣으므로 직접 나눌 필요는 없습니다. 검증할 때 java-jwt는 <code>exp</code>가 현재 시각보다 이전이면 토큰을 거절합니다.</p>
+<p>표준에 없는 이름도 직접 정해 넣을 수 있는데, 이것을 <strong>사용자 정의 클레임(private claim)</strong>이라고 합니다. 이 책은 회원 번호 <code>id</code>와 역할 목록 <code>roles</code>를 넣습니다. 서버가 토큰만 보고 &quot;누가, 어떤 역할로&quot; 요청했는지 알아야 하기 때문입니다. <code>roles</code>에는 2장의 user_role_tb에 저장한 값(<code>USER</code>, <code>ADMIN</code>)을 <code>ROLE_</code> 접두사 없이 그대로 넣습니다. <code>ROLE_</code>은 토큰에서 User를 복원한 뒤 <code>getAuthorities()</code>가 붙입니다.</p>
+<h4>2.3 페이로드는 암호화가 아니다</h4>
+<p>Base64Url 인코딩은 글자를 바꾸는 규칙일 뿐 비밀키가 필요 없습니다. 누구든 토큰의 가운데 부분을 디코딩하면 페이로드 JSON을 그대로 읽을 수 있습니다. 그래서 페이로드에는 비밀번호, 이메일, 전화번호처럼 남이 보면 안 되는 정보를 넣지 않습니다. 이 책의 토큰에 username, id, roles만 넣는 이유입니다.</p>
+<p>JWT가 막는 것은 내용 읽기가 아니라 내용 바꾸기입니다. 공격자가 페이로드의 <code>roles</code>를 <code>[&quot;ADMIN&quot;]</code>으로 고쳐 다시 인코딩할 수는 있습니다. 하지만 바뀐 페이로드에 맞는 서명을 새로 계산하려면 서버의 비밀키가 필요합니다.</p>
+<table><thead><tr><th>공격 시도</th><th>결과</th><th>이유</th></tr></thead><tbody><tr><td>페이로드 내용 읽기</td><td>성공</td><td>인코딩일 뿐 암호화가 아님</td></tr><tr><td><code>roles</code>를 <code>[&quot;ADMIN&quot;]</code>으로 바꿔서 보내기</td><td>실패</td><td>서버가 다시 계산한 서명과 토큰의 서명이 다름</td></tr><tr><td>바꾼 페이로드에 맞는 서명 만들기</td><td>실패</td><td>비밀키를 모르면 계산할 수 없음</td></tr></tbody></table>
+<p>읽기는 성공하고 바꾸기는 실패하는 두 결과는 이 장 3.2의 예제에서 직접 확인합니다.</p>
+<h3>3. JwtUtil로 토큰 만들고 검증하기</h3>
+<p>토큰을 만들고 검증하는 일은 <strong>JwtUtil</strong> 클래스 하나에 모읍니다. JwtUtil은 HTTP 요청도 스프링 시큐리티도 모르는 순수한 자바 클래스입니다. User를 받아 토큰 문자열을 돌려주고, 토큰 문자열을 받아 User를 돌려주는 일만 합니다. 헤더에서 토큰을 꺼내는 일과 시큐리티에 인증 정보를 넣는 일은 5장의 JwtProvider와 JwtAuthorizationFilter가 맡습니다. 이렇게 나눠 두면 JwtUtil은 서버를 띄우지 않고 테스트 코드만으로 확인할 수 있습니다.</p>
+<p>토큰은 1장에서 추가한 java-jwt 라이브러리로 만듭니다. java-jwt는 Auth0에서 만든 라이브러리로, <code>JWT.create()</code>로 토큰을 만들고 <code>JWT.require()</code>로 검증기를 만듭니다.</p>
+<h4>3.1 토큰 생성 create()</h4>
+<p><strong>기본 문법</strong></p>
+<div class="code-wrap" data-kind="code" data-lang="java"><div class="code-label"><span class="code-label__name">Java</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1
+2
+3
+4
+5</div><pre><code class="language-java" data-code="String 토큰 = JWT.create()
+        .withSubject(주인)
+        .withExpiresAt(만료시각)
+        .withClaim(클레임이름, 값)
+        .sign(알고리즘);"><span class="token class-name">String</span> 토큰 <span class="token operator">=</span> <span class="token constant">JWT</span><span class="token punctuation">.</span><span class="token function">create</span><span class="token punctuation">(</span><span class="token punctuation">)</span>
+        <span class="token punctuation">.</span><span class="token function">withSubject</span><span class="token punctuation">(</span>주인<span class="token punctuation">)</span>
+        <span class="token punctuation">.</span><span class="token function">withExpiresAt</span><span class="token punctuation">(</span>만료시각<span class="token punctuation">)</span>
+        <span class="token punctuation">.</span><span class="token function">withClaim</span><span class="token punctuation">(</span>클레임이름<span class="token punctuation">,</span> 값<span class="token punctuation">)</span>
+        <span class="token punctuation">.</span><span class="token function">sign</span><span class="token punctuation">(</span>알고리즘<span class="token punctuation">)</span><span class="token punctuation">;</span></code></pre></div></div>
+<p><code>with</code>로 시작하는 메서드로 클레임을 하나씩 넣고, 마지막에 <code>sign()</code>으로 서명하면 <code>헤더.페이로드.서명</code> 문자열이 완성됩니다. <code>sign()</code>에 넘기는 <code>Algorithm</code> 객체에는 알고리즘 종류와 비밀키가 함께 들어 있습니다.</p>
+<p><strong>예제 3-1 — JwtUtil로 토큰 만들기</strong></p>
+<p><strong>파일명:</strong> <code>src/main/java/com/newtenco/blog/core/util/JwtUtil.java</code></p>
+<div class="code-wrap" data-kind="code" data-lang="java"><div class="code-label"><span class="code-label__name">Java</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34</div><pre><code class="language-java" data-code="package com.newtenco.blog.core.util;
+
+import com.auth0.jwt.JWT;
+import com.auth0.jwt.algorithms.Algorithm;
+import com.newtenco.blog.user.User;
+
+import java.util.Date;
+
+/**
+ * JWT 를 만들고(create) 검증하는(verify) 순수 자바 도구.
+ * HTTP 나 시큐리티를 전혀 모른다.
+ */
+public class JwtUtil {
+
+    public static final String HEADER = &quot;Authorization&quot;;   // 토큰을 담는 HTTP 헤더 이름
+    public static final String TOKEN_PREFIX = &quot;Bearer &quot;;   // 토큰 앞에 붙는 접두사 (공백 포함 7글자)
+    public static final long EXPIRATION_TIME = 1000L * 60 * 60 * 24; // 유효기간 1일
+
+    // 서명용 비밀키. HMAC512 는 64바이트(영문 64자) 이상을 권장한다.
+    // 실무에서는 코드에 두지 않고 환경 변수로 관리한다.
+    private static final String SECRET = &quot;newtenco-blog-jwt-secret-key-must-be-at-least-64-bytes-long-0123456789&quot;;
+    private static final Algorithm ALGORITHM = Algorithm.HMAC512(SECRET);
+
+    // 토큰 생성: &quot;Bearer eyJ...&quot; 형태로 반환
+    public static String create(User user) {
+        String jwt = JWT.create()
+                .withSubject(user.getUsername())                                        // sub: 누구의 토큰인가
+                .withExpiresAt(new Date(System.currentTimeMillis() + EXPIRATION_TIME)) // exp: 만료 시간
+                .withClaim(&quot;id&quot;, user.getId())                                          // 사용자 정의 클레임
+                .withClaim(&quot;roles&quot;, user.getRoles())                                    // [&quot;USER&quot;, &quot;ADMIN&quot;]
+                .sign(ALGORITHM);                                                       // 비밀키로 서명
+        return TOKEN_PREFIX + jwt;
+    }
+}"><span class="token keyword">package</span> <span class="token namespace">com<span class="token punctuation">.</span>newtenco<span class="token punctuation">.</span>blog<span class="token punctuation">.</span>core<span class="token punctuation">.</span>util</span><span class="token punctuation">;</span>
+
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">com<span class="token punctuation">.</span>auth0<span class="token punctuation">.</span>jwt<span class="token punctuation">.</span></span><span class="token class-name">JWT</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">com<span class="token punctuation">.</span>auth0<span class="token punctuation">.</span>jwt<span class="token punctuation">.</span>algorithms<span class="token punctuation">.</span></span><span class="token class-name">Algorithm</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">com<span class="token punctuation">.</span>newtenco<span class="token punctuation">.</span>blog<span class="token punctuation">.</span>user<span class="token punctuation">.</span></span><span class="token class-name">User</span></span><span class="token punctuation">;</span>
+
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">java<span class="token punctuation">.</span>util<span class="token punctuation">.</span></span><span class="token class-name">Date</span></span><span class="token punctuation">;</span>
+
+<span class="token comment">/**
+ * JWT 를 만들고(create) 검증하는(verify) 순수 자바 도구.
+ * HTTP 나 시큐리티를 전혀 모른다.
+ */</span>
+<span class="token keyword">public</span> <span class="token keyword">class</span> <span class="token class-name">JwtUtil</span> <span class="token punctuation">{</span>
+
+    <span class="token keyword">public</span> <span class="token keyword">static</span> <span class="token keyword">final</span> <span class="token class-name">String</span> <span class="token constant">HEADER</span> <span class="token operator">=</span> <span class="token string">"Authorization"</span><span class="token punctuation">;</span>   <span class="token comment">// 토큰을 담는 HTTP 헤더 이름</span>
+    <span class="token keyword">public</span> <span class="token keyword">static</span> <span class="token keyword">final</span> <span class="token class-name">String</span> <span class="token constant">TOKEN_PREFIX</span> <span class="token operator">=</span> <span class="token string">"Bearer "</span><span class="token punctuation">;</span>   <span class="token comment">// 토큰 앞에 붙는 접두사 (공백 포함 7글자)</span>
+    <span class="token keyword">public</span> <span class="token keyword">static</span> <span class="token keyword">final</span> <span class="token keyword">long</span> <span class="token constant">EXPIRATION_TIME</span> <span class="token operator">=</span> <span class="token number">1000L</span> <span class="token operator">*</span> <span class="token number">60</span> <span class="token operator">*</span> <span class="token number">60</span> <span class="token operator">*</span> <span class="token number">24</span><span class="token punctuation">;</span> <span class="token comment">// 유효기간 1일</span>
+
+    <span class="token comment">// 서명용 비밀키. HMAC512 는 64바이트(영문 64자) 이상을 권장한다.</span>
+    <span class="token comment">// 실무에서는 코드에 두지 않고 환경 변수로 관리한다.</span>
+    <span class="token keyword">private</span> <span class="token keyword">static</span> <span class="token keyword">final</span> <span class="token class-name">String</span> <span class="token constant">SECRET</span> <span class="token operator">=</span> <span class="token string">"newtenco-blog-jwt-secret-key-must-be-at-least-64-bytes-long-0123456789"</span><span class="token punctuation">;</span>
+    <span class="token keyword">private</span> <span class="token keyword">static</span> <span class="token keyword">final</span> <span class="token class-name">Algorithm</span> <span class="token constant">ALGORITHM</span> <span class="token operator">=</span> <span class="token class-name">Algorithm</span><span class="token punctuation">.</span><span class="token function">HMAC512</span><span class="token punctuation">(</span><span class="token constant">SECRET</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+    <span class="token comment">// 토큰 생성: "Bearer eyJ..." 형태로 반환</span>
+    <span class="token keyword">public</span> <span class="token keyword">static</span> <span class="token class-name">String</span> <span class="token function">create</span><span class="token punctuation">(</span><span class="token class-name">User</span> user<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+        <span class="token class-name">String</span> jwt <span class="token operator">=</span> <span class="token constant">JWT</span><span class="token punctuation">.</span><span class="token function">create</span><span class="token punctuation">(</span><span class="token punctuation">)</span>
+                <span class="token punctuation">.</span><span class="token function">withSubject</span><span class="token punctuation">(</span>user<span class="token punctuation">.</span><span class="token function">getUsername</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span>                                        <span class="token comment">// sub: 누구의 토큰인가</span>
+                <span class="token punctuation">.</span><span class="token function">withExpiresAt</span><span class="token punctuation">(</span><span class="token keyword">new</span> <span class="token class-name">Date</span><span class="token punctuation">(</span><span class="token class-name">System</span><span class="token punctuation">.</span><span class="token function">currentTimeMillis</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token operator">+</span> <span class="token constant">EXPIRATION_TIME</span><span class="token punctuation">)</span><span class="token punctuation">)</span> <span class="token comment">// exp: 만료 시간</span>
+                <span class="token punctuation">.</span><span class="token function">withClaim</span><span class="token punctuation">(</span><span class="token string">"id"</span><span class="token punctuation">,</span> user<span class="token punctuation">.</span><span class="token function">getId</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span>                                          <span class="token comment">// 사용자 정의 클레임</span>
+                <span class="token punctuation">.</span><span class="token function">withClaim</span><span class="token punctuation">(</span><span class="token string">"roles"</span><span class="token punctuation">,</span> user<span class="token punctuation">.</span><span class="token function">getRoles</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span>                                    <span class="token comment">// ["USER", "ADMIN"]</span>
+                <span class="token punctuation">.</span><span class="token function">sign</span><span class="token punctuation">(</span><span class="token constant">ALGORITHM</span><span class="token punctuation">)</span><span class="token punctuation">;</span>                                                       <span class="token comment">// 비밀키로 서명</span>
+        <span class="token keyword">return</span> <span class="token constant">TOKEN_PREFIX</span> <span class="token operator">+</span> jwt<span class="token punctuation">;</span>
+    <span class="token punctuation">}</span>
+<span class="token punctuation">}</span></code></pre></div></div>
+<p><strong>파일명:</strong> <code>src/test/java/com/newtenco/blog/core/util/JwtUtilTest.java</code></p>
+<div class="code-wrap" data-kind="code" data-lang="java"><div class="code-label"><span class="code-label__name">Java</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23</div><pre><code class="language-java" data-code="package com.newtenco.blog.core.util;
+
+import com.newtenco.blog.user.User;
+import org.junit.jupiter.api.Test;
+
+import java.util.List;
+
+public class JwtUtilTest {
+
+    private User ssar() {
+        return User.builder()
+                .id(1)
+                .username(&quot;ssar&quot;)
+                .roles(List.of(&quot;USER&quot;))
+                .build();
+    }
+
+    @Test
+    public void create_test() {
+        String token = JwtUtil.create(ssar());
+        System.out.println(token);
+    }
+}"><span class="token keyword">package</span> <span class="token namespace">com<span class="token punctuation">.</span>newtenco<span class="token punctuation">.</span>blog<span class="token punctuation">.</span>core<span class="token punctuation">.</span>util</span><span class="token punctuation">;</span>
+
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">com<span class="token punctuation">.</span>newtenco<span class="token punctuation">.</span>blog<span class="token punctuation">.</span>user<span class="token punctuation">.</span></span><span class="token class-name">User</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">org<span class="token punctuation">.</span>junit<span class="token punctuation">.</span>jupiter<span class="token punctuation">.</span>api<span class="token punctuation">.</span></span><span class="token class-name">Test</span></span><span class="token punctuation">;</span>
+
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">java<span class="token punctuation">.</span>util<span class="token punctuation">.</span></span><span class="token class-name">List</span></span><span class="token punctuation">;</span>
+
+<span class="token keyword">public</span> <span class="token keyword">class</span> <span class="token class-name">JwtUtilTest</span> <span class="token punctuation">{</span>
+
+    <span class="token keyword">private</span> <span class="token class-name">User</span> <span class="token function">ssar</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+        <span class="token keyword">return</span> <span class="token class-name">User</span><span class="token punctuation">.</span><span class="token function">builder</span><span class="token punctuation">(</span><span class="token punctuation">)</span>
+                <span class="token punctuation">.</span><span class="token function">id</span><span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span>
+                <span class="token punctuation">.</span><span class="token function">username</span><span class="token punctuation">(</span><span class="token string">"ssar"</span><span class="token punctuation">)</span>
+                <span class="token punctuation">.</span><span class="token function">roles</span><span class="token punctuation">(</span><span class="token class-name">List</span><span class="token punctuation">.</span><span class="token function">of</span><span class="token punctuation">(</span><span class="token string">"USER"</span><span class="token punctuation">)</span><span class="token punctuation">)</span>
+                <span class="token punctuation">.</span><span class="token function">build</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token punctuation">}</span>
+
+    <span class="token annotation punctuation">@Test</span>
+    <span class="token keyword">public</span> <span class="token keyword">void</span> <span class="token function">create_test</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+        <span class="token class-name">String</span> token <span class="token operator">=</span> <span class="token class-name">JwtUtil</span><span class="token punctuation">.</span><span class="token function">create</span><span class="token punctuation">(</span><span class="token function">ssar</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+        <span class="token class-name">System</span><span class="token punctuation">.</span>out<span class="token punctuation">.</span><span class="token function">println</span><span class="token punctuation">(</span>token<span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token punctuation">}</span>
+<span class="token punctuation">}</span></code></pre></div></div>
+<p><strong>실행 결과</strong></p>
+<p>IntelliJ IDEA에서 JwtUtilTest.java를 열고 클래스 이름 왼쪽의 실행 아이콘을 눌러 Run &#x27;JwtUtilTest&#x27;를 고릅니다. Run 창에 다음 모양의 문자열이 한 줄로 출력됩니다. 페이로드에 만료 시각이 들어가므로 실행할 때마다 가운데와 마지막 부분이 달라집니다.</p>
+<div class="code-wrap" data-kind="output" data-lang="text"><div class="code-label"><span class="code-label__name">출력</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1</div><pre><code data-code="Bearer eyJ(헤더).eyJ(페이로드).(서명)">Bearer eyJ(헤더).eyJ(페이로드).(서명)</code></pre></div></div>
+<figure class="book-figure" data-type="generated" id="figure-7d9c46c94137"><div class="figure-scroll"><img src="../assets/img/71681d3dcd0f0f2a.png" alt="IntelliJ IDEA에서 JwtUtilTest의 create_test를 실행한 Run 창" data-raster="true"/></div><figcaption>IntelliJ IDEA에서 JwtUtilTest의 create_test를 실행한 Run 창</figcaption><p class="credit">생성형 예시 · 실제 실행 안 함</p></figure>
+<p><code>create()</code>의 각 코드가 하는 일은 다음과 같습니다.</p>
+<table><thead><tr><th>코드</th><th>하는 일</th></tr></thead><tbody><tr><td><code>withSubject(user.getUsername())</code></td><td><code>sub</code> 클레임에 username을 넣습니다</td></tr><tr><td><code>withExpiresAt(new Date(...))</code></td><td>현재 시각에 1일을 더해 <code>exp</code> 클레임에 넣습니다</td></tr><tr><td><code>withClaim(&quot;id&quot;, user.getId())</code></td><td>회원 번호를 사용자 정의 클레임으로 넣습니다</td></tr><tr><td><code>withClaim(&quot;roles&quot;, user.getRoles())</code></td><td>리스트도 그대로 넣을 수 있고, JSON 배열 <code>[&quot;USER&quot;]</code>로 저장됩니다</td></tr><tr><td><code>sign(ALGORITHM)</code></td><td>비밀키로 서명해 <code>헤더.페이로드.서명</code> 문자열을 만듭니다</td></tr><tr><td><code>TOKEN_PREFIX + jwt</code></td><td>앞에 <code>Bearer </code>를 붙여 돌려줍니다</td></tr></tbody></table>
+<p><code>TOKEN_PREFIX</code>는 <code>Bearer</code> 뒤의 공백까지 포함한 일곱 글자입니다. 클라이언트는 로그인 응답으로 받은 문자열을 그대로 <code>Authorization</code> 헤더 값에 넣으면 됩니다. <code>HEADER</code>와 <code>TOKEN_PREFIX</code>를 상수로 둔 것은 5장의 JwtProvider도 같은 상수를 쓰게 하기 위해서입니다. 문자열을 여러 곳에 직접 적으면 한 곳만 틀려도 토큰을 찾지 못합니다.</p>
+<p>비밀키를 담은 <code>ALGORITHM</code>은 클래스가 처음 쓰일 때 한 번만 만들어 재사용합니다. 모든 메서드를 <code>static</code>으로 둔 것도 JwtUtil이 상태를 갖지 않는 도구이기 때문입니다.</p>
+<h4>3.2 토큰 검증 verify()</h4>
+<p><strong>기본 문법</strong></p>
+<div class="code-wrap" data-kind="code" data-lang="java"><div class="code-label"><span class="code-label__name">Java</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1</div><pre><code class="language-java" data-code="DecodedJWT 결과 = JWT.require(알고리즘).build().verify(토큰);"><span class="token class-name">DecodedJWT</span> 결과 <span class="token operator">=</span> <span class="token constant">JWT</span><span class="token punctuation">.</span><span class="token function">require</span><span class="token punctuation">(</span>알고리즘<span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">build</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">verify</span><span class="token punctuation">(</span>토큰<span class="token punctuation">)</span><span class="token punctuation">;</span></code></pre></div></div>
+<p><code>JWT.require()</code>는 어떤 알고리즘과 비밀키로 검사할지 정한 검증기(<code>JWTVerifier</code>)를 만듭니다. 검증기의 <code>verify()</code>는 토큰을 세 부분으로 나눈 뒤 헤더의 알고리즘, 서명, <code>exp</code> 같은 시간 클레임을 차례로 검사합니다. 모두 통과하면 클레임을 꺼낼 수 있는 <code>DecodedJWT</code>를 돌려주고, 하나라도 실패하면 예외를 던집니다. 실패했다고 <code>null</code>을 돌려주는 일은 없습니다.</p>
+<table><thead><tr><th>실패 원인</th><th>발생하는 예외</th></tr></thead><tbody><tr><td>점으로 나뉜 세 부분이 아니거나 디코딩할 수 없음</td><td><code>JWTDecodeException</code></td></tr><tr><td>헤더의 알고리즘이 검증기와 다름</td><td><code>AlgorithmMismatchException</code></td></tr><tr><td>서명이 맞지 않음(위조)</td><td><code>SignatureVerificationException</code></td></tr><tr><td>만료 시각이 지남</td><td><code>TokenExpiredException</code></td></tr></tbody></table>
+<p>네 예외는 모두 <code>JWTVerificationException</code>을 상속합니다. 그래서 호출하는 쪽은 <code>JWTVerificationException</code> 하나만 잡으면 모든 검증 실패를 처리할 수 있습니다. 5장의 JwtAuthorizationFilter가 이 방법을 씁니다.</p>
+<p><strong>예제 3-2 — 토큰 검증하고 위조 토큰 거절하기</strong></p>
+<p><strong>이어서:</strong> 예제 3-1</p>
+<p><strong>파일명:</strong> <code>src/main/java/com/newtenco/blog/core/util/JwtUtil.java</code></p>
+<div class="code-wrap" data-kind="code" data-lang="java"><div class="code-label"><span class="code-label__name">Java</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45
+46
+47
+48</div><pre><code class="language-java" data-code="package com.newtenco.blog.core.util;
+
+import com.auth0.jwt.JWT;
+import com.auth0.jwt.algorithms.Algorithm;
+import com.auth0.jwt.interfaces.DecodedJWT;
+import com.newtenco.blog.user.User;
+
+import java.util.Date;
+import java.util.List;
+
+/**
+ * JWT 를 만들고(create) 검증하는(verify) 순수 자바 도구.
+ * HTTP 나 시큐리티를 전혀 모른다.
+ */
+public class JwtUtil {
+
+    public static final String HEADER = &quot;Authorization&quot;;   // 토큰을 담는 HTTP 헤더 이름
+    public static final String TOKEN_PREFIX = &quot;Bearer &quot;;   // 토큰 앞에 붙는 접두사 (공백 포함 7글자)
+    public static final long EXPIRATION_TIME = 1000L * 60 * 60 * 24; // 유효기간 1일
+
+    // 서명용 비밀키. HMAC512 는 64바이트(영문 64자) 이상을 권장한다.
+    // 실무에서는 코드에 두지 않고 환경 변수로 관리한다.
+    private static final String SECRET = &quot;newtenco-blog-jwt-secret-key-must-be-at-least-64-bytes-long-0123456789&quot;;
+    private static final Algorithm ALGORITHM = Algorithm.HMAC512(SECRET);
+
+    // 토큰 생성: &quot;Bearer eyJ...&quot; 형태로 반환
+    public static String create(User user) {
+        String jwt = JWT.create()
+                .withSubject(user.getUsername())                                        // sub: 누구의 토큰인가
+                .withExpiresAt(new Date(System.currentTimeMillis() + EXPIRATION_TIME)) // exp: 만료 시간
+                .withClaim(&quot;id&quot;, user.getId())                                          // 사용자 정의 클레임
+                .withClaim(&quot;roles&quot;, user.getRoles())                                    // [&quot;USER&quot;, &quot;ADMIN&quot;]
+                .sign(ALGORITHM);                                                       // 비밀키로 서명
+        return TOKEN_PREFIX + jwt;
+    }
+
+    // 토큰 검증: 서명이 틀리거나 만료되면 JWTVerificationException 이 발생한다
+    public static User verify(String jwt) {
+        DecodedJWT decoded = JWT.require(ALGORITHM).build().verify(jwt);
+
+        Integer id = decoded.getClaim(&quot;id&quot;).asInt();
+        String username = decoded.getSubject();
+        List&lt;String&gt; roles = decoded.getClaim(&quot;roles&quot;).asList(String.class);
+
+        // DB 조회 없이 토큰 안의 정보만으로 User 객체를 복원한다 (비밀번호는 없음)
+        return User.builder().id(id).username(username).roles(roles).build();
+    }
+}"><span class="token keyword">package</span> <span class="token namespace">com<span class="token punctuation">.</span>newtenco<span class="token punctuation">.</span>blog<span class="token punctuation">.</span>core<span class="token punctuation">.</span>util</span><span class="token punctuation">;</span>
+
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">com<span class="token punctuation">.</span>auth0<span class="token punctuation">.</span>jwt<span class="token punctuation">.</span></span><span class="token class-name">JWT</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">com<span class="token punctuation">.</span>auth0<span class="token punctuation">.</span>jwt<span class="token punctuation">.</span>algorithms<span class="token punctuation">.</span></span><span class="token class-name">Algorithm</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">com<span class="token punctuation">.</span>auth0<span class="token punctuation">.</span>jwt<span class="token punctuation">.</span>interfaces<span class="token punctuation">.</span></span><span class="token class-name">DecodedJWT</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">com<span class="token punctuation">.</span>newtenco<span class="token punctuation">.</span>blog<span class="token punctuation">.</span>user<span class="token punctuation">.</span></span><span class="token class-name">User</span></span><span class="token punctuation">;</span>
+
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">java<span class="token punctuation">.</span>util<span class="token punctuation">.</span></span><span class="token class-name">Date</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">java<span class="token punctuation">.</span>util<span class="token punctuation">.</span></span><span class="token class-name">List</span></span><span class="token punctuation">;</span>
+
+<span class="token comment">/**
+ * JWT 를 만들고(create) 검증하는(verify) 순수 자바 도구.
+ * HTTP 나 시큐리티를 전혀 모른다.
+ */</span>
+<span class="token keyword">public</span> <span class="token keyword">class</span> <span class="token class-name">JwtUtil</span> <span class="token punctuation">{</span>
+
+    <span class="token keyword">public</span> <span class="token keyword">static</span> <span class="token keyword">final</span> <span class="token class-name">String</span> <span class="token constant">HEADER</span> <span class="token operator">=</span> <span class="token string">"Authorization"</span><span class="token punctuation">;</span>   <span class="token comment">// 토큰을 담는 HTTP 헤더 이름</span>
+    <span class="token keyword">public</span> <span class="token keyword">static</span> <span class="token keyword">final</span> <span class="token class-name">String</span> <span class="token constant">TOKEN_PREFIX</span> <span class="token operator">=</span> <span class="token string">"Bearer "</span><span class="token punctuation">;</span>   <span class="token comment">// 토큰 앞에 붙는 접두사 (공백 포함 7글자)</span>
+    <span class="token keyword">public</span> <span class="token keyword">static</span> <span class="token keyword">final</span> <span class="token keyword">long</span> <span class="token constant">EXPIRATION_TIME</span> <span class="token operator">=</span> <span class="token number">1000L</span> <span class="token operator">*</span> <span class="token number">60</span> <span class="token operator">*</span> <span class="token number">60</span> <span class="token operator">*</span> <span class="token number">24</span><span class="token punctuation">;</span> <span class="token comment">// 유효기간 1일</span>
+
+    <span class="token comment">// 서명용 비밀키. HMAC512 는 64바이트(영문 64자) 이상을 권장한다.</span>
+    <span class="token comment">// 실무에서는 코드에 두지 않고 환경 변수로 관리한다.</span>
+    <span class="token keyword">private</span> <span class="token keyword">static</span> <span class="token keyword">final</span> <span class="token class-name">String</span> <span class="token constant">SECRET</span> <span class="token operator">=</span> <span class="token string">"newtenco-blog-jwt-secret-key-must-be-at-least-64-bytes-long-0123456789"</span><span class="token punctuation">;</span>
+    <span class="token keyword">private</span> <span class="token keyword">static</span> <span class="token keyword">final</span> <span class="token class-name">Algorithm</span> <span class="token constant">ALGORITHM</span> <span class="token operator">=</span> <span class="token class-name">Algorithm</span><span class="token punctuation">.</span><span class="token function">HMAC512</span><span class="token punctuation">(</span><span class="token constant">SECRET</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+    <span class="token comment">// 토큰 생성: "Bearer eyJ..." 형태로 반환</span>
+    <span class="token keyword">public</span> <span class="token keyword">static</span> <span class="token class-name">String</span> <span class="token function">create</span><span class="token punctuation">(</span><span class="token class-name">User</span> user<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+        <span class="token class-name">String</span> jwt <span class="token operator">=</span> <span class="token constant">JWT</span><span class="token punctuation">.</span><span class="token function">create</span><span class="token punctuation">(</span><span class="token punctuation">)</span>
+                <span class="token punctuation">.</span><span class="token function">withSubject</span><span class="token punctuation">(</span>user<span class="token punctuation">.</span><span class="token function">getUsername</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span>                                        <span class="token comment">// sub: 누구의 토큰인가</span>
+                <span class="token punctuation">.</span><span class="token function">withExpiresAt</span><span class="token punctuation">(</span><span class="token keyword">new</span> <span class="token class-name">Date</span><span class="token punctuation">(</span><span class="token class-name">System</span><span class="token punctuation">.</span><span class="token function">currentTimeMillis</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token operator">+</span> <span class="token constant">EXPIRATION_TIME</span><span class="token punctuation">)</span><span class="token punctuation">)</span> <span class="token comment">// exp: 만료 시간</span>
+                <span class="token punctuation">.</span><span class="token function">withClaim</span><span class="token punctuation">(</span><span class="token string">"id"</span><span class="token punctuation">,</span> user<span class="token punctuation">.</span><span class="token function">getId</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span>                                          <span class="token comment">// 사용자 정의 클레임</span>
+                <span class="token punctuation">.</span><span class="token function">withClaim</span><span class="token punctuation">(</span><span class="token string">"roles"</span><span class="token punctuation">,</span> user<span class="token punctuation">.</span><span class="token function">getRoles</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span>                                    <span class="token comment">// ["USER", "ADMIN"]</span>
+                <span class="token punctuation">.</span><span class="token function">sign</span><span class="token punctuation">(</span><span class="token constant">ALGORITHM</span><span class="token punctuation">)</span><span class="token punctuation">;</span>                                                       <span class="token comment">// 비밀키로 서명</span>
+        <span class="token keyword">return</span> <span class="token constant">TOKEN_PREFIX</span> <span class="token operator">+</span> jwt<span class="token punctuation">;</span>
+    <span class="token punctuation">}</span>
+
+    <span class="token comment">// 토큰 검증: 서명이 틀리거나 만료되면 JWTVerificationException 이 발생한다</span>
+    <span class="token keyword">public</span> <span class="token keyword">static</span> <span class="token class-name">User</span> <span class="token function">verify</span><span class="token punctuation">(</span><span class="token class-name">String</span> jwt<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+        <span class="token class-name">DecodedJWT</span> decoded <span class="token operator">=</span> <span class="token constant">JWT</span><span class="token punctuation">.</span><span class="token function">require</span><span class="token punctuation">(</span><span class="token constant">ALGORITHM</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">build</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">verify</span><span class="token punctuation">(</span>jwt<span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+        <span class="token class-name">Integer</span> id <span class="token operator">=</span> decoded<span class="token punctuation">.</span><span class="token function">getClaim</span><span class="token punctuation">(</span><span class="token string">"id"</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">asInt</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+        <span class="token class-name">String</span> username <span class="token operator">=</span> decoded<span class="token punctuation">.</span><span class="token function">getSubject</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+        <span class="token class-name">List</span><span class="token generics"><span class="token punctuation">&lt;</span><span class="token class-name">String</span><span class="token punctuation">></span></span> roles <span class="token operator">=</span> decoded<span class="token punctuation">.</span><span class="token function">getClaim</span><span class="token punctuation">(</span><span class="token string">"roles"</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">asList</span><span class="token punctuation">(</span><span class="token class-name">String</span><span class="token punctuation">.</span><span class="token keyword">class</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+        <span class="token comment">// DB 조회 없이 토큰 안의 정보만으로 User 객체를 복원한다 (비밀번호는 없음)</span>
+        <span class="token keyword">return</span> <span class="token class-name">User</span><span class="token punctuation">.</span><span class="token function">builder</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">id</span><span class="token punctuation">(</span>id<span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">username</span><span class="token punctuation">(</span>username<span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">roles</span><span class="token punctuation">(</span>roles<span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">build</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token punctuation">}</span>
+<span class="token punctuation">}</span></code></pre></div></div>
+<p><strong>파일명:</strong> <code>src/test/java/com/newtenco/blog/core/util/JwtUtilTest.java</code></p>
+<div class="code-wrap" data-kind="code" data-lang="java"><div class="code-label"><span class="code-label__name">Java</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45
+46
+47
+48
+49
+50
+51
+52
+53
+54
+55
+56
+57
+58
+59
+60</div><pre><code class="language-java" data-code="package com.newtenco.blog.core.util;
+
+import com.auth0.jwt.exceptions.JWTVerificationException;
+import com.newtenco.blog.user.User;
+import org.junit.jupiter.api.Test;
+
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
+public class JwtUtilTest {
+
+    private User ssar() {
+        return User.builder()
+                .id(1)
+                .username(&quot;ssar&quot;)
+                .roles(List.of(&quot;USER&quot;))
+                .build();
+    }
+
+    @Test
+    public void create_test() {
+        String token = JwtUtil.create(ssar());
+        System.out.println(token);
+    }
+
+    @Test
+    public void verify_test() {
+        // verify() 에는 &quot;Bearer &quot; 를 뗀 순수한 JWT 만 넘긴다
+        String jwt = JwtUtil.create(ssar()).replace(JwtUtil.TOKEN_PREFIX, &quot;&quot;);
+
+        User user = JwtUtil.verify(jwt);
+        System.out.println(&quot;id=&quot; + user.getId());
+        System.out.println(&quot;username=&quot; + user.getUsername());
+        System.out.println(&quot;roles=&quot; + user.getRoles());
+        System.out.println(&quot;password=&quot; + user.getPassword());
+    }
+
+    @Test
+    public void tamper_test() {
+        String jwt = JwtUtil.create(ssar()).replace(JwtUtil.TOKEN_PREFIX, &quot;&quot;);
+        String[] parts = jwt.split(&quot;\\.&quot;);
+
+        // 페이로드는 인코딩일 뿐이라 비밀키 없이 읽을 수 있다
+        String payload = new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8);
+        System.out.println(&quot;payload=&quot; + payload);
+
+        // 역할을 ADMIN 으로 바꾸고, 서명은 원래 것을 그대로 붙인다
+        String fakePayload = payload.replace(&quot;\&quot;USER\&quot;&quot;, &quot;\&quot;ADMIN\&quot;&quot;);
+        String encodedFakePayload = Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(fakePayload.getBytes(StandardCharsets.UTF_8));
+        String fakeJwt = parts[0] + &quot;.&quot; + encodedFakePayload + &quot;.&quot; + parts[2];
+
+        JWTVerificationException e = assertThrows(JWTVerificationException.class,
+                () -&gt; JwtUtil.verify(fakeJwt));
+        System.out.println(&quot;result=&quot; + e.getClass().getSimpleName());
+    }
+}"><span class="token keyword">package</span> <span class="token namespace">com<span class="token punctuation">.</span>newtenco<span class="token punctuation">.</span>blog<span class="token punctuation">.</span>core<span class="token punctuation">.</span>util</span><span class="token punctuation">;</span>
+
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">com<span class="token punctuation">.</span>auth0<span class="token punctuation">.</span>jwt<span class="token punctuation">.</span>exceptions<span class="token punctuation">.</span></span><span class="token class-name">JWTVerificationException</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">com<span class="token punctuation">.</span>newtenco<span class="token punctuation">.</span>blog<span class="token punctuation">.</span>user<span class="token punctuation">.</span></span><span class="token class-name">User</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">org<span class="token punctuation">.</span>junit<span class="token punctuation">.</span>jupiter<span class="token punctuation">.</span>api<span class="token punctuation">.</span></span><span class="token class-name">Test</span></span><span class="token punctuation">;</span>
+
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">java<span class="token punctuation">.</span>nio<span class="token punctuation">.</span>charset<span class="token punctuation">.</span></span><span class="token class-name">StandardCharsets</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">java<span class="token punctuation">.</span>util<span class="token punctuation">.</span></span><span class="token class-name">Base64</span></span><span class="token punctuation">;</span>
+<span class="token keyword">import</span> <span class="token import"><span class="token namespace">java<span class="token punctuation">.</span>util<span class="token punctuation">.</span></span><span class="token class-name">List</span></span><span class="token punctuation">;</span>
+
+<span class="token keyword">import</span> <span class="token keyword">static</span> <span class="token import static"><span class="token namespace">org<span class="token punctuation">.</span>junit<span class="token punctuation">.</span>jupiter<span class="token punctuation">.</span>api<span class="token punctuation">.</span></span><span class="token class-name">Assertions</span><span class="token punctuation">.</span><span class="token static">assertThrows</span></span><span class="token punctuation">;</span>
+
+<span class="token keyword">public</span> <span class="token keyword">class</span> <span class="token class-name">JwtUtilTest</span> <span class="token punctuation">{</span>
+
+    <span class="token keyword">private</span> <span class="token class-name">User</span> <span class="token function">ssar</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+        <span class="token keyword">return</span> <span class="token class-name">User</span><span class="token punctuation">.</span><span class="token function">builder</span><span class="token punctuation">(</span><span class="token punctuation">)</span>
+                <span class="token punctuation">.</span><span class="token function">id</span><span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span>
+                <span class="token punctuation">.</span><span class="token function">username</span><span class="token punctuation">(</span><span class="token string">"ssar"</span><span class="token punctuation">)</span>
+                <span class="token punctuation">.</span><span class="token function">roles</span><span class="token punctuation">(</span><span class="token class-name">List</span><span class="token punctuation">.</span><span class="token function">of</span><span class="token punctuation">(</span><span class="token string">"USER"</span><span class="token punctuation">)</span><span class="token punctuation">)</span>
+                <span class="token punctuation">.</span><span class="token function">build</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token punctuation">}</span>
+
+    <span class="token annotation punctuation">@Test</span>
+    <span class="token keyword">public</span> <span class="token keyword">void</span> <span class="token function">create_test</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+        <span class="token class-name">String</span> token <span class="token operator">=</span> <span class="token class-name">JwtUtil</span><span class="token punctuation">.</span><span class="token function">create</span><span class="token punctuation">(</span><span class="token function">ssar</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+        <span class="token class-name">System</span><span class="token punctuation">.</span>out<span class="token punctuation">.</span><span class="token function">println</span><span class="token punctuation">(</span>token<span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token punctuation">}</span>
+
+    <span class="token annotation punctuation">@Test</span>
+    <span class="token keyword">public</span> <span class="token keyword">void</span> <span class="token function">verify_test</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+        <span class="token comment">// verify() 에는 "Bearer " 를 뗀 순수한 JWT 만 넘긴다</span>
+        <span class="token class-name">String</span> jwt <span class="token operator">=</span> <span class="token class-name">JwtUtil</span><span class="token punctuation">.</span><span class="token function">create</span><span class="token punctuation">(</span><span class="token function">ssar</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">replace</span><span class="token punctuation">(</span><span class="token class-name">JwtUtil</span><span class="token punctuation">.</span><span class="token constant">TOKEN_PREFIX</span><span class="token punctuation">,</span> <span class="token string">""</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+        <span class="token class-name">User</span> user <span class="token operator">=</span> <span class="token class-name">JwtUtil</span><span class="token punctuation">.</span><span class="token function">verify</span><span class="token punctuation">(</span>jwt<span class="token punctuation">)</span><span class="token punctuation">;</span>
+        <span class="token class-name">System</span><span class="token punctuation">.</span>out<span class="token punctuation">.</span><span class="token function">println</span><span class="token punctuation">(</span><span class="token string">"id="</span> <span class="token operator">+</span> user<span class="token punctuation">.</span><span class="token function">getId</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+        <span class="token class-name">System</span><span class="token punctuation">.</span>out<span class="token punctuation">.</span><span class="token function">println</span><span class="token punctuation">(</span><span class="token string">"username="</span> <span class="token operator">+</span> user<span class="token punctuation">.</span><span class="token function">getUsername</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+        <span class="token class-name">System</span><span class="token punctuation">.</span>out<span class="token punctuation">.</span><span class="token function">println</span><span class="token punctuation">(</span><span class="token string">"roles="</span> <span class="token operator">+</span> user<span class="token punctuation">.</span><span class="token function">getRoles</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+        <span class="token class-name">System</span><span class="token punctuation">.</span>out<span class="token punctuation">.</span><span class="token function">println</span><span class="token punctuation">(</span><span class="token string">"password="</span> <span class="token operator">+</span> user<span class="token punctuation">.</span><span class="token function">getPassword</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token punctuation">}</span>
+
+    <span class="token annotation punctuation">@Test</span>
+    <span class="token keyword">public</span> <span class="token keyword">void</span> <span class="token function">tamper_test</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+        <span class="token class-name">String</span> jwt <span class="token operator">=</span> <span class="token class-name">JwtUtil</span><span class="token punctuation">.</span><span class="token function">create</span><span class="token punctuation">(</span><span class="token function">ssar</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">replace</span><span class="token punctuation">(</span><span class="token class-name">JwtUtil</span><span class="token punctuation">.</span><span class="token constant">TOKEN_PREFIX</span><span class="token punctuation">,</span> <span class="token string">""</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+        <span class="token class-name">String</span><span class="token punctuation">[</span><span class="token punctuation">]</span> parts <span class="token operator">=</span> jwt<span class="token punctuation">.</span><span class="token function">split</span><span class="token punctuation">(</span><span class="token string">"\\."</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+        <span class="token comment">// 페이로드는 인코딩일 뿐이라 비밀키 없이 읽을 수 있다</span>
+        <span class="token class-name">String</span> payload <span class="token operator">=</span> <span class="token keyword">new</span> <span class="token class-name">String</span><span class="token punctuation">(</span><span class="token class-name">Base64</span><span class="token punctuation">.</span><span class="token function">getUrlDecoder</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">decode</span><span class="token punctuation">(</span>parts<span class="token punctuation">[</span><span class="token number">1</span><span class="token punctuation">]</span><span class="token punctuation">)</span><span class="token punctuation">,</span> <span class="token class-name">StandardCharsets</span><span class="token punctuation">.</span><span class="token constant">UTF_8</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+        <span class="token class-name">System</span><span class="token punctuation">.</span>out<span class="token punctuation">.</span><span class="token function">println</span><span class="token punctuation">(</span><span class="token string">"payload="</span> <span class="token operator">+</span> payload<span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+        <span class="token comment">// 역할을 ADMIN 으로 바꾸고, 서명은 원래 것을 그대로 붙인다</span>
+        <span class="token class-name">String</span> fakePayload <span class="token operator">=</span> payload<span class="token punctuation">.</span><span class="token function">replace</span><span class="token punctuation">(</span><span class="token string">"\"USER\""</span><span class="token punctuation">,</span> <span class="token string">"\"ADMIN\""</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+        <span class="token class-name">String</span> encodedFakePayload <span class="token operator">=</span> <span class="token class-name">Base64</span><span class="token punctuation">.</span><span class="token function">getUrlEncoder</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">withoutPadding</span><span class="token punctuation">(</span><span class="token punctuation">)</span>
+                <span class="token punctuation">.</span><span class="token function">encodeToString</span><span class="token punctuation">(</span>fakePayload<span class="token punctuation">.</span><span class="token function">getBytes</span><span class="token punctuation">(</span><span class="token class-name">StandardCharsets</span><span class="token punctuation">.</span><span class="token constant">UTF_8</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+        <span class="token class-name">String</span> fakeJwt <span class="token operator">=</span> parts<span class="token punctuation">[</span><span class="token number">0</span><span class="token punctuation">]</span> <span class="token operator">+</span> <span class="token string">"."</span> <span class="token operator">+</span> encodedFakePayload <span class="token operator">+</span> <span class="token string">"."</span> <span class="token operator">+</span> parts<span class="token punctuation">[</span><span class="token number">2</span><span class="token punctuation">]</span><span class="token punctuation">;</span>
+
+        <span class="token class-name">JWTVerificationException</span> e <span class="token operator">=</span> <span class="token function">assertThrows</span><span class="token punctuation">(</span><span class="token class-name">JWTVerificationException</span><span class="token punctuation">.</span><span class="token keyword">class</span><span class="token punctuation">,</span>
+                <span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token operator">-></span> <span class="token class-name">JwtUtil</span><span class="token punctuation">.</span><span class="token function">verify</span><span class="token punctuation">(</span>fakeJwt<span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+        <span class="token class-name">System</span><span class="token punctuation">.</span>out<span class="token punctuation">.</span><span class="token function">println</span><span class="token punctuation">(</span><span class="token string">"result="</span> <span class="token operator">+</span> e<span class="token punctuation">.</span><span class="token function">getClass</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">getSimpleName</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token punctuation">}</span>
+<span class="token punctuation">}</span></code></pre></div></div>
+<p><strong>실행 결과</strong></p>
+<p>Run &#x27;JwtUtilTest&#x27;로 세 테스트를 함께 실행하면 모두 통과합니다. verify_test와 tamper_test의 출력은 다음과 같습니다. <code>exp</code> 값은 실행 시각에 따라 다르고, 페이로드 안 클레임의 순서는 아래와 다를 수 있습니다.</p>
+<div class="code-wrap" data-kind="output" data-lang="text"><div class="code-label"><span class="code-label__name">출력</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1
+2
+3
+4</div><pre><code data-code="id=1
+username=ssar
+roles=[USER]
+password=null">id=1
+username=ssar
+roles=[USER]
+password=null</code></pre></div></div>
+<div class="code-wrap" data-kind="output" data-lang="text"><div class="code-label"><span class="code-label__name">출력</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1
+2</div><pre><code data-code="payload={&quot;sub&quot;:&quot;ssar&quot;,&quot;exp&quot;:1763000000,&quot;id&quot;:1,&quot;roles&quot;:[&quot;USER&quot;]}
+result=SignatureVerificationException">payload={&quot;sub&quot;:&quot;ssar&quot;,&quot;exp&quot;:1763000000,&quot;id&quot;:1,&quot;roles&quot;:[&quot;USER&quot;]}
+result=SignatureVerificationException</code></pre></div></div>
+<p>verify_test는 토큰을 만들 때 넣은 <code>id</code>, <code>sub</code>, <code>roles</code>가 그대로 User로 돌아오는 것을 보여 줍니다. <code>password</code>가 <code>null</code>인 것은 토큰에 비밀번호를 넣지 않았기 때문입니다. <code>verify()</code>는 DB를 조회하지 않고 토큰 안의 정보만으로 User를 만듭니다. 그래서 이 User에는 password뿐 아니라 email과 createdAt도 비어 있습니다. 요청마다 DB를 조회하지 않는 대신 생기는 한계입니다. 8장에서 이 User로 내 정보를 조회할 때 다시 다룹니다.</p>
+<p><code>verify()</code>에 넘길 때 <code>Bearer </code>를 떼는 것도 눈여겨봅니다. 접두사가 붙은 채로 넘기면 java-jwt가 토큰 형식을 읽지 못해 <code>JWTDecodeException</code>이 발생합니다. 실제 서버에서는 5장의 JwtProvider가 헤더에서 토큰을 꺼내며 접두사를 뗍니다.</p>
+<p>tamper_test는 2.3의 두 결과를 그대로 보여 줍니다. 비밀키 없이도 페이로드 JSON을 읽을 수 있었습니다. 하지만 <code>roles</code>를 <code>[&quot;ADMIN&quot;]</code>으로 바꾸자 서버가 다시 계산한 서명이 토큰의 서명과 달라져 <code>SignatureVerificationException</code>이 발생했습니다. 만료된 토큰에서 발생하는 <code>TokenExpiredException</code>은 8장 연습문제에서 확인합니다.</p>
+<h4>3.3 비밀키 관리</h4>
+<p>HS512는 토큰을 서명할 때와 검증할 때 같은 비밀키를 씁니다. 비밀키를 아는 사람은 누구든 서버가 받아들일 토큰을 만들 수 있습니다. JWT 방식의 보안은 비밀키 하나에 달려 있으므로 다음 규칙을 지킵니다.</p>
+<table><thead><tr><th>규칙</th><th>이유</th></tr></thead><tbody><tr><td>HS512의 비밀키는 64바이트(영문 64자) 이상으로 만든다</td><td>JWA 표준(RFC 7518)은 HMAC 키를 해시 출력 크기(HS512는 512비트) 이상으로 하도록 정합니다. 짧은 키는 무차별 대입으로 알아낼 위험이 커집니다</td></tr><tr><td>비밀키를 코드에 적지 않는다</td><td>코드가 Git 저장소에 올라가면 저장소를 보는 누구나 토큰을 위조할 수 있습니다</td></tr><tr><td>운영 비밀키는 환경 변수나 비밀 관리 도구로 넣는다</td><td>코드를 바꾸지 않고 서버마다 다른 키를 쓸 수 있습니다</td></tr><tr><td>비밀키를 바꾸면 기존 토큰이 모두 무효가 된다</td><td>새 키로 계산한 서명이 옛 서명과 다르기 때문입니다. 키가 새어 나갔을 때는 이 성질로 모든 토큰을 한 번에 막습니다</td></tr></tbody></table>
+<p>java-jwt는 키 길이가 짧아도 오류를 내지 않습니다[확인 필요]. 그래서 키 길이는 라이브러리에 맡기지 말고 개발자가 직접 지켜야 합니다. 예제의 <code>SECRET</code>은 64자가 넘게 만들었습니다.</p>
+<p>이 책은 학습 흐름을 단순하게 하려고 <code>SECRET</code>을 코드에 두었습니다. 운영 환경에서는 다음처럼 환경 변수에서 읽어 오도록 바꿉니다.</p>
+<p><strong>코드 조각</strong></p>
+<div class="code-wrap" data-kind="code" data-lang="java"><div class="code-label"><span class="code-label__name">Java</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1</div><pre><code class="language-java" data-code="private static final String SECRET = System.getenv(&quot;JWT_SECRET&quot;);"><span class="token keyword">private</span> <span class="token keyword">static</span> <span class="token keyword">final</span> <span class="token class-name">String</span> <span class="token constant">SECRET</span> <span class="token operator">=</span> <span class="token class-name">System</span><span class="token punctuation">.</span><span class="token function">getenv</span><span class="token punctuation">(</span><span class="token string">"JWT_SECRET"</span><span class="token punctuation">)</span><span class="token punctuation">;</span></code></pre></div></div>
+<p>이렇게 바꾸면 환경 변수 <code>JWT_SECRET</code>이 없을 때 JwtUtil이 처음 쓰이는 순간 <code>Algorithm.HMAC512()</code>가 <code>null</code>을 받아 예외가 발생합니다. 키 없이 토큰을 만드는 일을 막아 주므로 오히려 안전합니다.</p>
+<p>JwtUtil은 아직 어디에서도 호출하지 않으므로 서버를 실행해도 달라지는 점은 없습니다. 실제 로그인 응답으로 토큰을 받는 일은 7장에서 합니다.</p><nav class="chapter-nav"><button type="button" class="text" data-prev="true" data-href="02.html">← 이전 장</button><span>3 / 13</span><button type="button" class="text" data-next="true" data-href="04.html">다음 장 →</button></nav></section></main></div><script src="../assets/book-6d8228e561daa8ba.js"></script></body></html>
