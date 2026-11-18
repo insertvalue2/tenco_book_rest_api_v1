@@ -3,7 +3,9 @@
 <h3>1. UserDetails를 구현한 User 엔티티</h3>
 <h4>1.1 UserDetails란?</h4>
 <p><strong>UserDetails</strong>는 스프링 시큐리티가 사용자 정보를 다룰 때 쓰는 인터페이스입니다. 시큐리티는 우리가 만든 User 클래스의 구조를 모릅니다. 그래서 아이디, 비밀번호, 권한 목록, 계정 상태를 정해진 이름의 메서드로 꺼낼 수 있어야 합니다. 그래야 사용자를 인증하고 권한을 검사할 수 있습니다. User 엔티티가 UserDetails를 구현하면 시큐리티가 User 객체를 로그인한 사용자로 다룰 수 있습니다.</p>
-<p>SSR 프로젝트에서는 세션에 User 객체를 넣고 직접 꺼내 썼습니다. 시큐리티를 쓰면 로그인한 사용자를 시큐리티가 보관하며, 이때 보관하는 객체가 UserDetails 타입입니다. User 엔티티가 이 인터페이스를 직접 구현하면 엔티티를 감싸는 별도 클래스를 만들지 않아도 됩니다.</p>
+<p>그림 2-1은 UserDetails를 구현하기 전과 후를 비교한 것입니다.</p>
+<figure class="book-figure" data-type="generated" id="figure-26c1400b035e"><div class="figure-scroll"><img src="../assets/img/bc0a26fa868d8ed9.png" alt="UserDetails를 구현하기 전과 후" data-raster="true"/></div><figcaption>UserDetails를 구현하기 전과 후</figcaption></figure>
+<p>SSR 프로젝트에서는 세션에 User 객체를 넣고 직접 꺼내 썼습니다. 시큐리티를 쓰면 로그인한 사용자 정보를 시큐리티가 인증 객체(Authentication)에 담아 관리하며, 그 안에 들어가는 사용자 객체가 UserDetails 타입입니다.</p>
 <table><thead><tr><th>UserDetails 메서드</th><th>돌려주는 값</th><th>User에서 구현한 방법</th></tr></thead><tbody><tr><td><code>getUsername()</code></td><td>아이디</td><td>Lombok <code>@Getter</code>가 만든 메서드</td></tr><tr><td><code>getPassword()</code></td><td>암호화된 비밀번호</td><td>Lombok <code>@Getter</code>가 만든 메서드</td></tr><tr><td><code>getAuthorities()</code></td><td>권한 목록</td><td>직접 구현(1.3 참고)</td></tr><tr><td><code>isAccountNonExpired()</code> · <code>isAccountNonLocked()</code> · <code>isCredentialsNonExpired()</code> · <code>isEnabled()</code></td><td>계정 상태</td><td>인터페이스의 기본값(<code>true</code>) 사용</td></tr></tbody></table>
 <p>필드 이름을 <code>username</code>, <code>password</code>로 지으면 <code>@Getter</code>가 만든 <code>getUsername()</code>, <code>getPassword()</code>가 그대로 인터페이스 메서드를 구현합니다. 계정 상태 메서드 네 개는 Spring Security 6.3부터 인터페이스에 <code>true</code>를 돌려주는 기본 메서드로 들어 있습니다. 이 프로젝트에는 계정 정지나 휴면 정책이 없으므로 네 메서드를 따로 작성하지 않습니다.</p>
 <p><strong>예제 2-1 — UserDetails를 구현한 User 엔티티</strong></p>
@@ -192,7 +194,7 @@ public class User implements UserDetails {
     <span class="token comment">// isAccountNonExpired, isAccountNonLocked, isCredentialsNonExpired, isEnabled 는</span>
     <span class="token comment">// UserDetails 인터페이스에 기본값 true 로 구현되어 있으므로 따로 작성하지 않아도 된다.</span>
 <span class="token punctuation">}</span></code></pre></div></div>
-<p>H2에서는 <code>USER</code>가 예약어라서 <code>user</code>라는 이름으로 테이블을 만들면 오류가 납니다. 그래서 테이블 이름을 <code>user_tb</code>로 정했습니다. <code>password</code> 컬럼 길이를 60으로 둔 것은 BCrypt로 암호화한 값이 60자이기 때문입니다. <code>update()</code>는 9장 회원 수정 API에서 더티 체킹으로 이메일과 비밀번호를 바꿀 때 씁니다.</p>
+<p>H2에서는 <code>USER</code>가 예약어라서 <code>user</code>라는 이름으로 테이블을 만들면 오류가 납니다. 그래서 테이블 이름을 <code>user_tb</code>로 정했습니다. <code>password</code> 컬럼 길이를 60으로 둔 것은 BCrypt로 암호화한 값이 60자이기 때문입니다.</p>
 <h4>1.2 권한 목록과 @ElementCollection</h4>
 <p>한 회원이 권한을 여러 개 가질 수 있습니다. 일반 회원은 USER 하나만 갖고, 관리자는 USER와 ADMIN을 함께 갖습니다. 이 값을 <code>user_tb</code>의 한 칸에 <code>&quot;USER,ADMIN&quot;</code>처럼 콤마로 이어 넣으면, 한 칸에 값 하나만 둔다는 1차 정규화를 어깁니다. 그러면 특정 권한을 가진 회원을 찾거나 권한 하나만 지울 때마다 문자열을 잘라서 처리해야 합니다.</p>
 <p><strong>@ElementCollection</strong>은 엔티티가 아닌 값의 목록을 별도 테이블에 저장하게 하는 JPA 어노테이션입니다. Role 엔티티 클래스를 따로 만들지 않아도 JPA가 <code>user_role_tb</code> 테이블을 만들고, 권한 하나를 한 줄로 저장합니다.</p>
@@ -202,17 +204,18 @@ public class User implements UserDetails {
 <table><thead><tr><th>user_id</th><th>role</th></tr></thead><tbody><tr><td>1</td><td>USER</td></tr><tr><td>2</td><td>USER</td></tr><tr><td>2</td><td>ADMIN</td></tr></tbody></table>
 <p>cos는 <code>user_role_tb</code>에 두 줄이 있으므로 권한이 두 개입니다. User 객체를 조회하면 JPA가 이 줄들을 모아 <code>roles</code> 필드에 <code>[&quot;USER&quot;, &quot;ADMIN&quot;]</code> 목록으로 채웁니다.</p>
 <table><thead><tr><th>어노테이션</th><th>역할</th></tr></thead><tbody><tr><td><code>@ElementCollection(fetch = FetchType.EAGER)</code></td><td>값 목록을 별도 테이블에 저장하고, User를 조회할 때 함께 가져옵니다</td></tr><tr><td><code>@CollectionTable(name = &quot;user_role_tb&quot;, joinColumns = @JoinColumn(name = &quot;user_id&quot;))</code></td><td>별도 테이블의 이름과 User를 가리키는 FK 컬럼(<code>user_id</code>)을 정합니다</td></tr><tr><td><code>@Column(name = &quot;role&quot;)</code></td><td>목록의 값이 들어갈 컬럼 이름을 정합니다</td></tr><tr><td><code>@Builder.Default</code></td><td>빌더로 객체를 만들 때 <code>roles</code>를 지정하지 않으면 <code>[&quot;USER&quot;]</code>를 기본값으로 씁니다</td></tr></tbody></table>
-<p><code>@ElementCollection</code>의 기본 조회 방식은 LAZY입니다. 여기서 EAGER로 바꾼 이유는 시큐리티가 권한을 검사할 때 <code>getAuthorities()</code>가 언제든 권한 목록을 읽을 수 있어야 하기 때문입니다. 권한은 사용자마다 몇 개뿐이라 함께 가져와도 부담이 작습니다. 여러 회원을 한꺼번에 조회할 때 권한 조회 쿼리가 늘어나는 문제는 10장에서 설정으로 해결합니다.</p>
-<p><code>@Builder.Default</code>가 있으면 7장의 회원가입처럼 빌더에서 <code>roles</code>를 빼고 User를 만들어도 새 회원은 자동으로 USER 권한을 받습니다. <code>List.of(&quot;USER&quot;)</code>를 <code>new ArrayList&lt;&gt;()</code>로 한 번 감싼 이유는 <code>List.of()</code>가 만든 목록은 수정할 수 없어서입니다. 13장에서 관리자가 역할을 바꿀 때 이 목록을 수정합니다.</p>
+<p>@ElementCollection의 기본 조회 방식은 LAZY입니다. 여기서 EAGER로 바꾼 이유는 User를 조회하면 권한 목록도 거의 항상 함께 쓰기 때문입니다. 권한은 로그인한 사용자가 무엇을 할 수 있는지 판단하는 정보라서, 회원 정보를 쓰는 곳이면 대부분 권한도 필요합니다. 1장에서 open-in-view=false로 설정했으므로 트랜잭션이 끝난 뒤에 LAZY로 남은 목록을 읽으면 오류가 납니다. EAGER로 두면 User를 조회할 때 권한 목록이 함께 채워지므로 그런 걱정 없이 쓸 수 있습니다. 권한은 사용자마다 몇 개뿐이라 함께 가져와도 부담이 작습니다.</p>
 <h4>1.3 getAuthorities()와 ROLE_ 접두사</h4>
-<p><code>getAuthorities()</code>는 시큐리티가 권한을 검사할 때 부르는 메서드입니다. 반환 타입인 <strong>GrantedAuthority</strong>는 권한 하나를 나타내는 인터페이스이고, <strong>SimpleGrantedAuthority</strong>는 권한 이름 문자열 하나를 담는 기본 구현 클래스입니다. 예제 2-1의 <code>getAuthorities()</code>는 <code>roles</code>의 문자열마다 앞에 <code>&quot;ROLE_&quot;</code>을 붙여 SimpleGrantedAuthority로 바꿉니다.</p>
+<p><code>getAuthorities()</code>는 시큐리티가 권한을 검사할 때 부르는 메서드입니다. 시큐리티는 권한을 <code>&quot;ADMIN&quot;</code> 같은 문자열 그대로 받지 않고, 권한 하나를 담은 객체로 받습니다. 이 권한 객체의 타입이 <strong>GrantedAuthority</strong>입니다. GrantedAuthority는 인터페이스라서 <code>new</code>로 바로 만들 수 없습니다. 그래서 시큐리티가 미리 준비해 둔 구현 클래스인 <strong>SimpleGrantedAuthority</strong>를 씁니다. <code>new SimpleGrantedAuthority(&quot;ROLE_ADMIN&quot;)</code>처럼 권한 이름을 넣어 만들고, <code>getAuthorities()</code>는 이렇게 만든 권한 객체들을 목록에 담아 돌려줍니다. 예제 2-1의 <code>getAuthorities()</code>는 <code>roles</code>의 문자열마다 앞에 <code>&quot;ROLE_&quot;</code>을 붙여 SimpleGrantedAuthority로 바꿉니다.</p>
+<p>그림 2-2는 cos의 권한 값이 <code>getAuthorities()</code>를 거쳐 권한 검사에 쓰이는 흐름과, <code>ROLE_</code>을 빼먹었을 때 검사가 실패하는 경우를 비교한 것입니다.</p>
+<figure class="book-figure" data-type="generated" id="figure-9589a1bcb2b7"><div class="figure-scroll"><img src="../assets/img/b2fdb2d938c7f01e.png" alt="getAuthorities()가 권한을 만드는 과정" data-raster="true"/></div><figcaption>getAuthorities()가 권한을 만드는 과정</figcaption></figure>
 <p><code>ROLE_</code>을 붙이는 이유는 6장에서 접근 규칙을 정할 때 쓰는 <code>hasRole()</code> 때문입니다. <code>hasRole(&quot;ADMIN&quot;)</code>은 사용자의 권한 목록에 <code>ADMIN</code>이 있는지 보지 않고, 앞에 <code>ROLE_</code>을 붙인 <code>ROLE_ADMIN</code>이 있는지 확인합니다. 스프링 시큐리티는 권한(authority) 가운데 <code>ROLE_</code>로 시작하는 것을 역할(role)로 취급하기 때문입니다.</p>
 <table><thead><tr><th>DB의 role 값</th><th><code>getAuthorities()</code>가 돌려주는 권한</th><th>접근 규칙에서 검사하는 방법</th></tr></thead><tbody><tr><td>USER</td><td>ROLE_USER</td><td><code>hasRole(&quot;USER&quot;)</code></td></tr><tr><td>ADMIN</td><td>ROLE_ADMIN</td><td><code>hasRole(&quot;ADMIN&quot;)</code></td></tr></tbody></table>
-<p>DB에는 <code>USER</code>, <code>ADMIN</code>처럼 접두사 없이 저장하고, <code>getAuthorities()</code>에서만 <code>ROLE_</code>을 붙입니다. 접두사를 빼먹고 <code>new SimpleGrantedAuthority(role)</code>로 돌려주면 cos가 관리자인데도 <code>hasRole(&quot;ADMIN&quot;)</code> 검사를 통과하지 못하고 403 응답을 받습니다. 접두사를 붙이는 일을 이 메서드 한 곳에 모아 두었으므로 DB 값이나 접근 규칙에 <code>ROLE_</code>을 직접 쓸 필요가 없습니다.</p>
+<p>DB에는 <code>USER</code>, <code>ADMIN</code>처럼 접두사 없이 저장하고, <code>getAuthorities()</code>에서만 <code>ROLE_</code>을 붙입니다. 그림 2-2의 아래 칸처럼 접두사를 빼먹고 <code>new SimpleGrantedAuthority(role)</code>로 돌려주면 cos가 관리자인데도 <code>hasRole(&quot;ADMIN&quot;)</code> 검사를 통과하지 못하고 403 응답을 받습니다. 접두사를 붙이는 일을 이 메서드 한 곳에 모아 두었으므로 DB 값이나 접근 규칙에 <code>ROLE_</code>을 직접 쓸 필요가 없습니다.</p>
 <h3>2. Board·Reply 엔티티</h3>
 <p>게시글과 댓글 엔티티는 10장부터 만들 게시글·댓글 API가 사용합니다. 6장에서 URL 규칙을 정할 때도 게시글 주소를 예로 쓰므로 테이블을 미리 준비합니다. 시큐리티와 관련된 코드는 없고, 이미 배운 JPA 연관관계를 그대로 씁니다.</p>
-<figure class="book-figure" data-type="generated" id="figure-be8bd2822aef"><div class="figure-scroll"><img src="../assets/img/2e53cfe86637b3fb.png" alt="네 테이블의 관계" data-raster="true"/></div><figcaption>네 테이블의 관계</figcaption></figure>
-<p>그림 2-1처럼 FK는 모두 N 쪽 테이블에 있습니다. <code>user_role_tb</code>는 엔티티 없이 <code>@ElementCollection</code>이 만든 테이블이고, 나머지 두 테이블은 아래 예제의 엔티티로 만듭니다.</p>
+<figure class="book-figure" data-type="user" id="figure-0d61f5d5aa34"><div class="figure-scroll"><img src="../assets/img/42ab025dcf2d95a8.png" alt="네 테이블의 관계" class="shot" data-raster="true"/></div><figcaption>네 테이블의 관계</figcaption></figure>
+<p>그림 2-3처럼 FK는 모두 N 쪽 테이블에 있습니다. <code>user_role_tb</code>는 엔티티 없이 <code>@ElementCollection</code>이 만든 테이블이고, 나머지 두 테이블은 아래 예제의 엔티티로 만듭니다.</p>
 <p><strong>예제 2-2 — Board와 Reply 엔티티</strong></p>
 <p><strong>파일명:</strong> <code>src/main/java/com/newtenco/blog/board/Board.java</code></p>
 <div class="code-wrap" data-kind="code" data-lang="java"><div class="code-label"><span class="code-label__name">Java</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1
@@ -305,7 +308,7 @@ public class Board {
 
     // 연관관계의 주인이 아님(mappedBy) -&gt; 조회 전용
     @OneToMany(mappedBy = &quot;board&quot;, fetch = FetchType.LAZY, cascade = CascadeType.REMOVE)
-    private List&lt;Reply&gt; replies = new ArrayList&lt;&gt;();
+    private List&lt;Reply&gt; replies = new ArrayList&lt;&gt;();   // 참고 - Reply 엔티티를 만들어야 함 
 
     @CreationTimestamp
     private Timestamp createdAt;
@@ -359,7 +362,7 @@ public class Board {
 
     <span class="token comment">// 연관관계의 주인이 아님(mappedBy) -> 조회 전용</span>
     <span class="token annotation punctuation">@OneToMany</span><span class="token punctuation">(</span>mappedBy <span class="token operator">=</span> <span class="token string">"board"</span><span class="token punctuation">,</span> fetch <span class="token operator">=</span> <span class="token class-name">FetchType</span><span class="token punctuation">.</span><span class="token constant">LAZY</span><span class="token punctuation">,</span> cascade <span class="token operator">=</span> <span class="token class-name">CascadeType</span><span class="token punctuation">.</span><span class="token constant">REMOVE</span><span class="token punctuation">)</span>
-    <span class="token keyword">private</span> <span class="token class-name">List</span><span class="token generics"><span class="token punctuation">&lt;</span><span class="token class-name">Reply</span><span class="token punctuation">></span></span> replies <span class="token operator">=</span> <span class="token keyword">new</span> <span class="token class-name">ArrayList</span><span class="token generics"><span class="token punctuation">&lt;</span><span class="token punctuation">></span></span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+    <span class="token keyword">private</span> <span class="token class-name">List</span><span class="token generics"><span class="token punctuation">&lt;</span><span class="token class-name">Reply</span><span class="token punctuation">></span></span> replies <span class="token operator">=</span> <span class="token keyword">new</span> <span class="token class-name">ArrayList</span><span class="token generics"><span class="token punctuation">&lt;</span><span class="token punctuation">></span></span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>   <span class="token comment">// 참고 - Reply 엔티티를 만들어야 함 </span>
 
     <span class="token annotation punctuation">@CreationTimestamp</span>
     <span class="token keyword">private</span> <span class="token class-name">Timestamp</span> createdAt<span class="token punctuation">;</span>
@@ -422,7 +425,10 @@ public class Board {
 41
 42
 43
-44</div><pre><code class="language-java" data-code="package com.newtenco.blog.reply;
+44
+45
+46
+47</div><pre><code class="language-java" data-code="package com.newtenco.blog.reply;
 
 import com.newtenco.blog.board.Board;
 import com.newtenco.blog.user.User;
@@ -446,12 +452,15 @@ public class Reply {
 
     @Column(length = 100, nullable = false)
     private String comment;
-
+   
+    
     @ManyToOne(fetch = FetchType.LAZY)
+    // @JoinColumn(name = &quot;user_id&quot;) 이 없으면 &quot;필드명_id&quot; 로 컬럼이 만들어진다
     private User user;
 
     // 연관관계의 주인: FK(board_id)를 관리한다
     @ManyToOne(fetch = FetchType.LAZY)
+   // @JoinColumn(name = &quot;board_id&quot;) 이 없으면 &quot;필드명_id&quot; 로 컬럼이 만들어진다
     private Board board;
 
     @CreationTimestamp
@@ -489,12 +498,15 @@ public class Reply {
 
     <span class="token annotation punctuation">@Column</span><span class="token punctuation">(</span>length <span class="token operator">=</span> <span class="token number">100</span><span class="token punctuation">,</span> nullable <span class="token operator">=</span> <span class="token boolean">false</span><span class="token punctuation">)</span>
     <span class="token keyword">private</span> <span class="token class-name">String</span> comment<span class="token punctuation">;</span>
-
+   
+    
     <span class="token annotation punctuation">@ManyToOne</span><span class="token punctuation">(</span>fetch <span class="token operator">=</span> <span class="token class-name">FetchType</span><span class="token punctuation">.</span><span class="token constant">LAZY</span><span class="token punctuation">)</span>
+    <span class="token comment">// @JoinColumn(name = "user_id") 이 없으면 "필드명_id" 로 컬럼이 만들어진다</span>
     <span class="token keyword">private</span> <span class="token class-name">User</span> user<span class="token punctuation">;</span>
 
     <span class="token comment">// 연관관계의 주인: FK(board_id)를 관리한다</span>
     <span class="token annotation punctuation">@ManyToOne</span><span class="token punctuation">(</span>fetch <span class="token operator">=</span> <span class="token class-name">FetchType</span><span class="token punctuation">.</span><span class="token constant">LAZY</span><span class="token punctuation">)</span>
+   <span class="token comment">// @JoinColumn(name = "board_id") 이 없으면 "필드명_id" 로 컬럼이 만들어진다</span>
     <span class="token keyword">private</span> <span class="token class-name">Board</span> board<span class="token punctuation">;</span>
 
     <span class="token annotation punctuation">@CreationTimestamp</span>
@@ -511,11 +523,12 @@ public class Reply {
 <span class="token punctuation">}</span></code></pre></div></div>
 <table><thead><tr><th>어노테이션</th><th>위치</th><th>역할</th></tr></thead><tbody><tr><td><code>@ManyToOne(fetch = FetchType.LAZY)</code></td><td><code>Board.user</code> · <code>Reply.user</code> · <code>Reply.board</code></td><td>N:1 관계입니다. FK가 이 엔티티의 테이블에 생기며 이쪽이 연관관계의 주인입니다</td></tr><tr><td><code>@OneToMany(mappedBy = &quot;board&quot;)</code></td><td><code>Board.replies</code></td><td>연관관계의 주인이 아니므로 FK를 바꾸지 못하고 댓글 목록을 조회하는 데만 씁니다</td></tr></tbody></table>
 <p><code>mappedBy = &quot;board&quot;</code>의 <code>&quot;board&quot;</code>는 테이블이나 컬럼 이름이 아닙니다. 연관관계의 주인인 Reply 클래스의 필드 이름(<code>private Board board</code>)입니다. FK 컬럼 이름은 따로 정하지 않았으므로 JPA가 필드 이름과 대상의 PK 이름을 이어 <code>user_id</code>, <code>board_id</code>로 만듭니다.</p>
-<p><code>@ManyToOne</code>의 기본 조회 방식은 EAGER지만 모두 LAZY로 바꾸었습니다. 게시글 목록에 작성자 정보가 필요할 때는 10장에서 fetch join으로 한 번에 가져옵니다. <code>replies</code>에 건 <code>cascade = CascadeType.REMOVE</code>는 게시글을 삭제할 때 딸린 댓글도 함께 지우는 설정이며, 실제 동작은 11장에서 확인합니다.</p>
+<p><code>@ManyToOne</code>의 기본 조회 방식은 EAGER지만 모두 LAZY로 바꾸었습니다. <code>replies</code>에 건 <code>cascade = CascadeType.REMOVE</code>는 게시글을 삭제할 때 딸린 댓글도 함께 지우는 설정입니다.</p>
 <p>User와 달리 Board와 Reply는 클래스 대신 생성자에 <code>@Builder</code>를 붙였습니다. 빌더에서 <code>replies</code>를 빼기 위해서입니다. 댓글 목록은 조회 전용이라 게시글을 만들 때 넣을 일이 없습니다. 그래서 필드에 적은 <code>new ArrayList&lt;&gt;()</code>가 항상 초기값으로 남습니다.</p>
 <h3>3. 더미 데이터</h3>
 <h4>3.1 data.sql 작성</h4>
 <p><strong>더미 데이터</strong>는 기능을 확인하려고 미리 넣어 두는 테스트용 데이터입니다. 1장에서 <code>ddl-auto=create</code>와 H2 메모리 모드로 설정했기 때문에, 서버를 켤 때마다 테이블이 새로 만들어지고 데이터는 비어 있습니다. 매번 회원가입부터 다시 하지 않도록 <code>data.sql</code>에 INSERT 문을 넣어 둡니다. 1장의 <code>spring.jpa.defer-datasource-initialization=true</code> 설정 덕분에 JPA가 테이블을 만든 다음에 이 파일이 실행됩니다.</p>
+<p><code>src/main/resources</code> 아래에 <code>db</code> 폴더를 만들고 <code>data.sql</code> 파일을 새로 만듭니다. 1장에서 경로 앞에 <code>optional:</code>을 붙여 두었으므로 지금까지는 이 파일이 없어도 서버가 실행되었고, 이제부터는 서버를 켤 때마다 이 파일이 실행됩니다.</p>
 <p><strong>예제 2-3 — 회원·권한·게시글·댓글 더미 데이터</strong></p>
 <p><strong>파일명:</strong> <code>src/main/resources/db/data.sql</code></p>
 <div class="code-wrap" data-kind="code" data-lang="sql"><div class="code-label"><span class="code-label__name">SQL</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1
@@ -577,21 +590,21 @@ insert into reply_tb (comment, board_id, user_id, created_at) values (&#x27;댓�
 <span class="token keyword">insert</span> <span class="token keyword">into</span> reply_tb <span class="token punctuation">(</span><span class="token keyword">comment</span><span class="token punctuation">,</span> board_id<span class="token punctuation">,</span> user_id<span class="token punctuation">,</span> created_at<span class="token punctuation">)</span> <span class="token keyword">values</span> <span class="token punctuation">(</span><span class="token string">'댓글4'</span><span class="token punctuation">,</span> <span class="token number">5</span><span class="token punctuation">,</span> <span class="token number">1</span><span class="token punctuation">,</span> <span class="token function">now</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
 <span class="token keyword">insert</span> <span class="token keyword">into</span> reply_tb <span class="token punctuation">(</span><span class="token keyword">comment</span><span class="token punctuation">,</span> board_id<span class="token punctuation">,</span> user_id<span class="token punctuation">,</span> created_at<span class="token punctuation">)</span> <span class="token keyword">values</span> <span class="token punctuation">(</span><span class="token string">'댓글5'</span><span class="token punctuation">,</span> <span class="token number">5</span><span class="token punctuation">,</span> <span class="token number">1</span><span class="token punctuation">,</span> <span class="token function">now</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span></code></pre></div></div>
 <p><strong>실행 결과</strong></p>
-<p>서버를 실행하면 콘솔 로그에 네 테이블을 만드는 SQL이 출력됩니다. 컬럼 정의는 길어서 아래에서는 생략했습니다.</p>
+<p>서버를 실행하면 콘솔 로그에 네 테이블을 만드는 SQL이 출력됩니다. 컬럼 정의는 길어서 아래에서는 생략했습니다. 테이블이 만들어지는 순서는 이와 다를 수 있습니다.</p>
 <div class="code-wrap" data-kind="output" data-lang="text"><div class="code-label"><span class="code-label__name">출력</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1
 2
 3
-4</div><pre><code data-code="create table user_tb ( ...
+4</div><pre><code data-code="create table board_tb ( ...
+create table reply_tb ( ...
 create table user_role_tb ( ...
-create table board_tb ( ...
-create table reply_tb ( ...">create table user_tb ( ...
+create table user_tb ( ...">create table board_tb ( ...
+create table reply_tb ( ...
 create table user_role_tb ( ...
-create table board_tb ( ...
-create table reply_tb ( ...</code></pre></div></div>
-<p>INSERT 문에 <code>id</code>를 쓰지 않았으므로 <code>IDENTITY</code> 전략에 따라 1부터 차례로 번호가 붙습니다. 그래서 <code>user_role_tb</code>와 <code>board_tb</code>의 <code>user_id</code> 1은 ssar, 2는 cos를 가리킵니다. 게시글은 1<del>3번이 ssar, 4</del>5번이 cos의 글입니다. 댓글은 4번 게시글에 cos가 단 것 세 개, 5번 게시글에 ssar가 단 것 두 개입니다. 남의 글에 단 댓글과 내 글에 단 댓글이 섞여 있어서, 11장과 12장에서 작성자를 확인하는 실습에 씁니다.</p>
+create table user_tb ( ...</code></pre></div></div>
+<p>INSERT 문에 <code>id</code>를 쓰지 않았으므로 <code>IDENTITY</code> 전략에 따라 1부터 차례로 번호가 붙습니다. 그래서 <code>user_role_tb</code>와 <code>board_tb</code>의 <code>user_id</code> 1은 ssar, 2는 cos를 가리킵니다. 게시글은 1번부터 3번까지 ssar, 4번과 5번은 cos의 글입니다. 댓글은 4번 게시글에 cos가 단 것 세 개, 5번 게시글에 ssar가 단 것 두 개입니다.</p>
 <p>INSERT 순서도 FK를 따라야 합니다. <code>user_role_tb</code>와 <code>board_tb</code>는 <code>user_tb</code>를 가리키고 <code>reply_tb</code>는 <code>board_tb</code>를 가리킵니다. 참조되는 테이블에 먼저 넣어야 FK 제약 조건 오류가 나지 않습니다. 테이블에 실제로 들어간 데이터는 시큐리티 설정을 마친 6장에서 H2 콘솔로 확인합니다.</p>
 <h4>3.2 테스트 계정과 암호화된 비밀번호</h4>
 <p>더미 데이터에 들어 있는 테스트 계정은 두 개입니다. 이 책의 모든 실습에서 이 두 계정으로 로그인합니다.</p>
 <table><thead><tr><th>아이디</th><th>비밀번호</th><th>권한</th><th>쓰임</th></tr></thead><tbody><tr><td>ssar</td><td>1234</td><td>USER</td><td>일반 회원</td></tr><tr><td>cos</td><td>1234</td><td>USER, ADMIN</td><td>관리자</td></tr></tbody></table>
-<p><code>password</code> 컬럼에는 <code>1234</code>가 아니라 <code>$2a$10$</code>로 시작하는 60자 문자열이 들어 있습니다. <code>1234</code>를 BCrypt로 암호화한 값입니다. 7장의 로그인 API는 사용자가 입력한 <code>1234</code>를 DB 값과 문자열로 바로 비교하지 않고, PasswordEncoder로 두 값이 맞는지 확인합니다. 그래서 DB에 <code>1234</code>를 그대로 넣으면 비밀번호를 맞게 입력해도 로그인에 실패합니다.</p>
-<p>ssar와 cos의 암호화된 값이 똑같은 이유는 한 번 만든 결과를 두 계정에 복사해 넣었기 때문입니다. BCrypt는 같은 비밀번호라도 암호화할 때마다 다른 결과를 만듭니다. 결과가 달라도 로그인할 때는 비밀번호가 맞는지 확인할 수 있습니다. 그 원리와 결과 문자열의 구조는 7장에서 설명합니다.</p><nav class="chapter-nav"><button type="button" class="text" data-prev="true" data-href="01.html">← 이전 장</button><span>2 / 13</span><button type="button" class="text" data-next="true" data-href="03.html">다음 장 →</button></nav></section></main></div><script src="../assets/book-6d8228e561daa8ba.js"></script></body></html>
+<p>password 컬럼에는 1234가 아니라 $2a$10$로 시작하는 60자 문자열이 들어 있습니다. 1234를 BCrypt로 해시한 값입니다. 해시는 원래 값으로 되돌릴 수 없는 단방향 변환입니다. 그래서 로그인할 때는 사용자가 입력한 1234를 DB 값과 문자열로 바로 비교하지 않습니다. 입력값을 같은 방식으로 해시해서 DB 값과 맞는지 확인합니다. DB에 1234를 그대로 넣으면 비밀번호를 맞게 입력해도 로그인에 실패하는 이유입니다.</p>
+<p>ssar와 cos의 해시 값이 똑같은 이유는 한 번 만든 결과를 두 계정에 복사해 넣었기 때문입니다. BCrypt는 해시할 때마다 무작위 값(솔트)을 섞기 때문에 같은 비밀번호라도 매번 다른 결과를 만듭니다. 솔트는 결과 문자열 안에 함께 저장되므로, 결과가 달라도 비밀번호가 맞는지 확인할 수 있습니다.</p><nav class="chapter-nav"><button type="button" class="text" data-prev="true" data-href="01.html">← 이전 장</button><span>2 / 13</span><button type="button" class="text" data-next="true" data-href="03.html">다음 장 →</button></nav></section></main></div><script src="../assets/book-6d8228e561daa8ba.js"></script></body></html>

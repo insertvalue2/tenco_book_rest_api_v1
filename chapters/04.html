@@ -4,7 +4,7 @@
 <p>모양을 정하지 않으면 API마다 응답이 제각각입니다. 조회 API는 데이터만 보내고, 삭제 API는 본문 없이 보내고, 오류가 나면 스프링 기본 오류 응답이 나갑니다.</p>
 <table><thead><tr><th>상황</th><th>통일하지 않은 응답</th><th>공통 응답</th></tr></thead><tbody><tr><td>조회 성공</td><td><code>{&quot;id&quot;:1,&quot;username&quot;:&quot;ssar&quot;}</code></td><td><code>{&quot;status&quot;:200,&quot;msg&quot;:&quot;성공&quot;,&quot;body&quot;:{&quot;id&quot;:1,&quot;username&quot;:&quot;ssar&quot;}}</code></td></tr><tr><td>삭제 성공</td><td>(본문 없음)</td><td><code>{&quot;status&quot;:200,&quot;msg&quot;:&quot;성공&quot;,&quot;body&quot;:null}</code></td></tr><tr><td>실패</td><td><code>{&quot;timestamp&quot;:&quot;...&quot;,&quot;status&quot;:400,&quot;error&quot;:&quot;Bad Request&quot;,&quot;path&quot;:&quot;...&quot;}</code></td><td><code>{&quot;status&quot;:400,&quot;msg&quot;:&quot;이미 존재하는 유저네임입니다&quot;,&quot;body&quot;:null}</code></td></tr></tbody></table>
 <p>가운데 열처럼 응답이 제각각이면 프런트엔드 개발자는 API마다 응답을 읽는 코드를 따로 짜야 합니다. 스프링 기본 오류 응답에는 사용자에게 보여 줄 만한 메시지도 없습니다. 오른쪽 열처럼 모양을 하나로 맞추면 읽는 방법도 하나로 줄어듭니다. <code>status</code>를 확인하고, 성공이면 <code>body</code>를 쓰고 실패면 <code>msg</code>를 화면에 보여 주면 됩니다.</p>
-<h3>2. Resp</h3>
+<h3>2. 공통 응답 클래스</h3>
 <h4>2.1 record로 만든 응답 상자</h4>
 <p><code>Resp</code>는 <code>status</code> · <code>msg</code> · <code>body</code>를 담는 상자입니다. 값을 담아 JSON으로 내보내기만 하고 바꿀 일이 없으므로 <strong>record</strong>로 만듭니다. record는 자바 16부터 정식으로 쓸 수 있는 클래스 형태입니다. 괄호 안에 필드를 적으면 컴파일러가 그 필드로 생성자와 접근자 메서드를 만들어 줍니다.</p>
 <p><strong>기본 문법</strong></p>
@@ -16,7 +16,7 @@
     <span class="token comment">// 필요하면 메서드를 추가한다</span>
 <span class="token punctuation">}</span></code></pre></div></div>
 <p><code>record Resp(Integer status, String msg, Object body)</code>라고 쓰면 <code>private final</code> 필드 세 개, 세 값을 받는 생성자, <code>status()</code> · <code>msg()</code> · <code>body()</code> 접근자가 생깁니다. 일반 클래스와 달리 접근자 이름에 <code>get</code>이 붙지 않습니다. JSON 변환을 맡는 Jackson은 record의 접근자를 읽어 필드 이름 그대로 JSON 키를 만듭니다. record는 DTO를 만들 때 본격적으로 쓰므로 자세한 문법은 7장에서 다룹니다.</p>
-<p><code>body</code>에는 회원 정보, 게시글 목록, 토큰처럼 API마다 다른 값이 들어갑니다. 그래서 <code>body</code>의 타입을 제네릭 <code>T</code>로 열어 둡니다.</p>
+<p><code>body</code>에는 회원 정보, 게시글 목록, 토큰처럼 API마다 다른 값이 들어갑니다. 그래서 <code>body</code>의 타입을 제네릭 <code>T</code>로 열어 둡니다. <code>status</code>와 <code>msg</code>는 어떤 API든 타입이 같으므로 <code>Integer</code>와 <code>String</code>으로 정해 둡니다. <code>body</code>를 위 예처럼 <code>Object</code>로 두어도 동작은 하지만, 꺼내 쓸 때 형변환이 필요하고 타입이 틀려도 컴파일러가 알려 주지 못합니다.</p>
 <p>이 장의 파일 경로는 기본 패키지 <code>com.newtenco.blog</code> 아래를 기준으로 적습니다.</p>
 <p><strong>예제 4-1 — 공통 응답 Resp 만들기</strong></p>
 <p><strong>파일명:</strong> <code>core/util/Resp.java</code></p>
@@ -205,9 +205,18 @@ public class NotFoundException extends RuntimeException {
         <span class="token punctuation">.</span><span class="token function">orElseThrow</span><span class="token punctuation">(</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token operator">-></span> <span class="token keyword">new</span> <span class="token class-name">NotFoundException</span><span class="token punctuation">(</span><span class="token string">"게시글을 찾을 수 없습니다"</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span></code></pre></div></div>
 <p>이 코드에서 게시글이 없으면 클라이언트는 404 상태 코드와 함께 <code>{&quot;status&quot;:404,&quot;msg&quot;:&quot;게시글을 찾을 수 없습니다&quot;,&quot;body&quot;:null}</code>을 받습니다. 서비스는 상태 코드나 JSON을 신경 쓰지 않고 &quot;무엇이 왜 실패했는지&quot;만 예외로 알립니다.</p>
 <h4>3.2 RuntimeException을 상속하는 이유</h4>
-<p>네 예외는 모두 <code>Exception</code>이 아니라 <code>RuntimeException</code>을 상속합니다. <code>RuntimeException</code>과 그 하위 클래스는 <strong>언체크 예외(unchecked exception)</strong>라서 컴파일러가 처리를 강제하지 않습니다. 이 성질이 필요한 이유는 두 가지입니다.</p>
-<p>첫째, 메서드 선언에 <code>throws</code>를 쓰지 않아도 됩니다. 체크 예외였다면 예외를 던지는 서비스 메서드에 <code>throws</code>를 붙여야 합니다. 그 서비스를 부르는 컨트롤러 메서드도 <code>try-catch</code>로 잡거나 <code>throws</code>를 붙여야 합니다. 예외는 어차피 처리기가 받으므로, 중간 계층의 메서드 선언을 고칠 이유가 없습니다.</p>
-<p>둘째, 트랜잭션이 롤백됩니다. <code>@Transactional</code>은 기본 설정에서 언체크 예외가 발생할 때만 롤백하고, 체크 예외가 발생하면 커밋합니다. 서비스가 데이터를 일부 바꾼 뒤 <code>ForbiddenException</code>을 던졌다면 바뀐 내용은 취소되어야 합니다. <code>RuntimeException</code>을 상속하면 따로 설정하지 않아도 그렇게 동작합니다.</p>
+<p>네 예외는 모두 <code>Exception</code>이 아니라 <code>RuntimeException</code>을 상속합니다. 어떤 클래스를 상속하느냐에 따라 예외를 던지는 쪽이 해야 할 일이 달라집니다.</p>
+<p><code>Exception</code>을 상속한 예외(<strong>체크 예외(checked exception)</strong>)를 던지면, 컴파일러가 &quot;이 예외를 어떻게 처리할지 적으라&quot;고 요구합니다. 그래서 메서드 이름 옆에 <code>throws</code>를 붙여야 하고, 그 메서드를 부르는 쪽도 다시 <code>throws</code>를 붙이거나 <code>try-catch</code>로 감싸야 합니다.</p>
+<p><strong>코드 조각</strong></p>
+<div class="code-wrap" data-kind="code" data-lang="java"><div class="code-label"><span class="code-label__name">Java</span><div class="code-tools"><span class="copy-result" aria-live="polite"></span><button type="button" class="small copy">복사</button></div></div><div class="code-body"><div class="code-ln" aria-hidden="true">1
+2
+3</div><pre><code class="language-java" data-code="// Exception을 상속했다면
+public BoardResponse.Detail 상세보기(Integer id) throws NotFoundException { ... }   // 서비스에 throws
+public ResponseEntity&lt;?&gt; detail(...) throws NotFoundException { ... } // 컨트롤러에도 throws"><span class="token comment">// Exception을 상속했다면</span>
+<span class="token keyword">public</span> <span class="token class-name">BoardResponse<span class="token punctuation">.</span>Detail</span> 상세보기<span class="token punctuation">(</span><span class="token class-name">Integer</span> id<span class="token punctuation">)</span> <span class="token keyword">throws</span> <span class="token class-name">NotFoundException</span> <span class="token punctuation">{</span> <span class="token punctuation">.</span><span class="token punctuation">.</span><span class="token punctuation">.</span> <span class="token punctuation">}</span>   <span class="token comment">// 서비스에 throws</span>
+<span class="token keyword">public</span> <span class="token class-name">ResponseEntity</span><span class="token generics"><span class="token punctuation">&lt;</span><span class="token operator">?</span><span class="token punctuation">></span></span> <span class="token function">detail</span><span class="token punctuation">(</span><span class="token punctuation">.</span><span class="token punctuation">.</span><span class="token punctuation">.</span><span class="token punctuation">)</span> <span class="token keyword">throws</span> <span class="token class-name">NotFoundException</span> <span class="token punctuation">{</span> <span class="token punctuation">.</span><span class="token punctuation">.</span><span class="token punctuation">.</span> <span class="token punctuation">}</span> <span class="token comment">// 컨트롤러에도 throws</span></code></pre></div></div>
+<p><code>RuntimeException</code>을 상속한 예외(<strong>언체크 예외(unchecked exception)</strong>)는 이런 표시를 요구하지 않습니다. 서비스는 <code>throw</code>만 하면 되고, 컨트롤러는 아무것도 하지 않아도 예외가 <code>GlobalExceptionHandler</code>까지 그대로 올라갑니다. 이 책의 예외는 모두 처리기 한 곳에서 받으므로, 중간에 <code>throws</code>를 적을 이유가 없습니다.</p>
+<p>하나 더, 스프링의 <code>@Transactional</code>은 <code>RuntimeException</code>이 발생하면 그 트랜잭션에서 바꾼 DB 내용을 취소(롤백)합니다. <code>Exception</code>을 상속한 예외라면 따로 설정하지 않는 한 취소하지 않습니다. 실패를 알리는 예외에서 DB 변경이 취소되도록 <code>RuntimeException</code>을 상속하는 것이 안전합니다.</p>
 <h3>4. GlobalExceptionHandler</h3>
 <h4>4.1 @RestControllerAdvice와 @ExceptionHandler</h4>
 <p>서비스가 던진 예외는 컨트롤러를 거쳐 밖으로 나갑니다. 아무도 잡지 않으면 스프링은 500 상태 코드와 기본 오류 응답을 보냅니다. 이런 예외를 컨트롤러마다 <code>try-catch</code>로 잡지 않고 한 클래스에 모아 처리하는 것이 <strong>전역 예외 처리기</strong>입니다.</p>
